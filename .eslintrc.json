@@ -1,0 +1,36 @@
+{
+  "env": {
+    "browser": true,
+    "es2021": true,
+    "node": true,
+    "mocha": true
+  },
+  "extends": "eslint:recommended",
+  "ignorePatterns": [
+    "public",
+    "cypress"
+  ],
+  "parser": "@babel/eslint-parser",
+  "parserOptions": {
+    "ecmaVersion": 12,
+    "sourceType": "module",
+    "impliedStrict": true,
+    "requireConfigFile": false
+  },
+  "plugins": [
+    "svelte3"
+  ],
+  "rules": {
+    "no-prototype-builtins": "off",
+    "semi": "error",
+    "indent": ["error", 2, {"SwitchCase": 1}]
+  },
+  "globals": {
+    "Cypress": "readonly",
+    "cy": "readonly",
+    "expect": "readonly"
+  },
+  "settings": {
+    "svelte3/ignore-styles": true
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "database": {
+    "user": "potrade",
+    "password": "AJ6Sb$96VmQbr33E",
+    "dev": {
+      "host": "pocm-rds.clzzhho0xibs.ap-southeast-2.rds.amazonaws.com",
+      "database": "potrade_dev"
+    },
+    "uat": {
+      "host": "pocm-rds.clzzhho0xibs.ap-southeast-2.rds.amazonaws.com",
+      "database": "potrade_uat"
+    },
+    "prod": {
+      "host": "pocm-rds.clzzhho0xibs.ap-southeast-2.rds.amazonaws.com",
+      "database": "potrade"
+    },
+    "port": 5432,
+    "encryption_key": "NQtE77SmSc"
+  },
+  "https": {
+    "session": {
+      "secret": "sg5ZppedQORyn23eta3R"
+    }
+  },
+  "gateway": {
+    "secret": "4ASTBP3OkxVLti5KWgMU"
+  },
+  "pocbot": {
+    "secret": "a618p62L0Q3spEU7zGmP"
+  },
+  "oneview": {
+    "prod": {
+      "username": "pt",
+      "password": "Buha=&3n4)$X",
+      "base_url": "https://pocapital-prod.numerixms.com/oneview/rest",
+      "mkt_env_id": 2
+    },
+    "uat": {
+      "username": "ag",
+      "password": "5WgAs^Me",
+      "base_url": "http://3.0.60.36:8000/oneview/rest"
+    },
+    "sysname": "POTrade",
+    "auth_endpoint": "/auth/authentication/login",
+    "trade_endpoint": "/trade/trade/import",
+    "mid_endpoint": "/market/market-environment/import"
+  },
+  "mail": {
+    "host": "smtp.office365.com",
+    "port": "587",
+    "auth": {
+    "user": "reports@pocapital.com.au",
+    "pass": "cdkgyxxmgjllbbbr"
+    }
+  },
+  "markitwire": {
+    "secret": {
+      "uat": "markitwire",
+      "prod": "markitwire"
+    }
+  },
+  "reconcilliation": {
+    "email": "wpo@pocapital.com.au",
+    "time": {
+      "hours": 16,
+      "mins": 45
+    }
+  },
+  "env": "prod",
+  "version": "1.2.9"
+}

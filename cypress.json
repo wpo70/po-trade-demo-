@@ -1,0 +1,11 @@
+{
+  "baseUrl": "http://localhost:8080",
+  "watchForFileChanges": false,
+  "numTestsKeptInMemory": 20,
+  "ignoreTestFiles": [
+    "*~",
+    "*#"
+  ],
+  "viewportWidth": 1280,
+  "viewportHeight": 1024
+}
