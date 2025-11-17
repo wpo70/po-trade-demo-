@@ -1,0 +1,13 @@
+{
+  "orders": {
+    "delete": "id('navigation')/a[1]/span",
+    "navButton2": "id('navigation')/a[2]/span",
+    "navButton3": "id('navigation')/a[3]/span",
+    "navButton4": "id('navigation')/a[4]/span",
+    "navButton5": "id('navigation')/a[5]/span"
+  },
+  "msgBox": {
+    "form": "id('msgbox')",
+    "ok": "id('msgbox')/../div[3]/div/button[1]"
+  }
+}

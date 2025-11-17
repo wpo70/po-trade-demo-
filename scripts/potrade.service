@@ -1,0 +1,84 @@
+# Systemd service configuration.  See
+# https://www.axllent.org/docs/nodejs-service-with-systemd/
+
+# Install potrade by copying the potrade directory to /opt/potrade and setting
+# all files owned by user potrade and group potrade.  Then run
+#
+# > su - potrade
+# > cd /opt/potrade
+# > npm install --prod
+
+# Test that it is installed correctly with the commands
+# > su - potrade
+# > /usr/bin/node /opt/potrade/server/index.js
+
+# Install the potrade service by copying this file to 
+# /etc/systemd/system/potrade.service
+
+# Enable the potrade service
+#
+# > systemctl enable potrade.service
+## Created symlink from /etc/systemd/system/multi-user.target.wants/potrade.service to /etc/systemd/system/potrade.service.
+
+# Start the service
+#
+# > systemctl start potrade.service
+
+# Verify it is running
+#
+# > systemctl status potrade.service
+## potrade.service - Node.js Example Server
+##   Loaded: loaded (/etc/systemd/system/potrade.service; enabled)
+##   Active: active (running) since Thu 2015-12-31 09:29:35 NZDT; 7s ago
+## Main PID: 8952 (node)
+##   CGroup: /system.slice/potrade.service
+##           └─8952 /usr/bin/node /opt/potrade/server/index.js
+## Dec 31 09:29:35 fileserver po-trade[8952]: Listening on http://localhost:8080
+
+# Security / testing
+#
+# If you make any changes to the service
+# file, you will need to do a
+# 
+# > systemctl daemon-reload
+#
+# before reloading the service:
+#
+# > systemctl restart potrade.service
+#
+# I always suggest doing a systemctl status potrade.service after edits and a
+# restart to ensure the service is running as expected. 
+#
+# Now finally we can test how systemd restarts the process if it unexpectedly
+# dies (thanks Mark for the suggestion). We will manually “kill” the running
+# process by finding its Process ID (pid), and note how systemd automatically
+# restart it again:
+#
+# > ps -ef | grep server.js     # find the current pid
+# > kill 12345                  # kill the process by its pid reported above
+# > ps -ef | grep server.js     # notice node process is immediately respawned with a different pid
+
+
+[Unit]
+Description=PO Trade Server
+# Requires the postgresql service to run first
+Requires=After=postgresql.service
+
+[Service]
+ExecStart=/usr/bin/node /opt/potrade/server/index.js
+# Required on some systems
+WorkingDirectory=/opt/potrade
+Restart=always
+# Restart service after 10 seconds if node service crashes
+RestartSec=10
+# Output to syslog
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=po-trade
+User=potrade
+Group=potrade
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+
