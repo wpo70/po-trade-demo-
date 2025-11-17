@@ -1,138 +1,128 @@
 'use strict';
 
-const { query, makeQueryArrays } = require('.');
-const { logger } = require('../utils/logger.js');
-const config = require('../../config.json');
-const { temp_pass } = require('../email_handler.js');
+// Brokers are largely unchanging structures.
 
-module.exports.insertBrokers = async function (brokers) {
-  // Loop over the array of brokers and add them to the database in separate
-  // transactions.  Return all of the new brokers.  Although this code allows
-  // for an array of brokers to be inserted, in practice they will only ever come
-  // one at a time.
+import { writable, get } from 'svelte/store';
+import user from './user';
+import preferences from './preferences';
 
-  const rows = [];
-  var pg_row;
+const brokers = (function () {
+  const { subscribe, set, update } = writable([]);
 
-  // Loop over the array and add each broker to the database, returning itself.
-  // If the insert query fails for whatever reason the return value will be empty.
+  let anonVals = {};
+  let anonNum = 1;
 
-  for (let broker of brokers) {
-    pg_row = await insert_broker(broker);
-    if (pg_row.length !== 0) {
-      temp_pass(pg_row[0].email, pg_row[0].firstname, pg_row[0].new_password);
-      delete pg_row[0].new_password;
-      delete pg_row[0].password;
-      rows.push(pg_row[0]);
+  const getBroker = function (broker_id) {
+    // Get the broker by ID.
+  
+    if (broker_id === 0) {
+      return { broker_id: 0, firstname: "", lastname: "POC"};
     }
-  }
+  
+    const arr = get(brokers);
+    const broker = arr.find(b => b.broker_id === broker_id);
+    return broker;
+  };
+  
+  const name = function (broker_id) {
+    // Concatenate the broker's full name.
+    const broker = getBroker(broker_id);
+    const name = broker.firstname + ' ' + broker.lastname;
 
-  // Return the array of new brokers.
-  return rows;
-};
-
-module.exports.updateBrokers = async function (brokers) {
-  // Loop over the array of brokers and update them in the database in separate
-  // transactions.  Return all of the new brokers. Although this code allows
-  // for an array of brokers to be updated, in practice they will only ever come
-  // one at a time.
-
-  const rows = [];
-  var pg_row;
-
-  // Loop over the array and update each broker in the database.
-
-  for (let broker of brokers) {
-    pg_row = await update_broker(broker);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
+    // Checks if user is allowed to view this data, if not replaces it with "Broker X"
+    const currentuser = brokers.get(user.get());
+    if (!currentuser.permission["Not Anonymous"]){
+      if (!anonVals[name]){
+        anonVals[name] = "Broker " + anonNum;
+        anonNum++;
+      }
+      return anonVals[name];
+    } else {
+      return name;
     }
+  };
+
+  const add = function (broker) {
+    // adds a trader to the store
+    update(store => {
+      store.push(broker);
+      return store;
+    });
+  };
+
+  const updateBroker = function (broker) {
+    // updates a trader in the store
+
+    let updatedBroker;
+
+    update(store => {
+
+      let idx = store.findIndex((b) => b.broker_id === broker.broker_id);
+
+      if (idx !== -1) {
+        store[idx] = broker;
+        updatedBroker = broker;
+      }
+
+      return store;
+    });
+
+    return updatedBroker;
+  };
+
+  const remove = function (broker_ids) {
+    // deletes a trader from the store
+
+    let deleted_brokers = [];
+
+    update(store => {
+      broker_ids.forEach((broker_id) => {
+        let idx = store.findIndex((t) => t.broker_id === broker_id);
+
+        if (idx !== -1) {
+          // deleted_brokers.push(store[idx]);
+          // store.splice(idx, 1);
+          store[idx].active = false;
+        }
+      });
+
+      return store;
+    });
+
+    return deleted_brokers;
+  };
+
+  const generateRecipientsList = function () {
+    let id = user.get();
+    return get(brokers).map(b => 
+      (b.broker_id == id || !b.can_notify) ? null : {id:b.broker_id, text:b.firstname + " " + b.lastname, broker:b}
+    ).filter(b => b != null);
+  };
+
+  const getVCONAccounts = function () {
+    let store = get(brokers);
+    return store.filter(b => !!b.vcon_account).map(b => {return {name: `${b.firstname} ${b.lastname}`, vcon_account: b.vcon_account}})
   }
 
-  // Return the array of updated brokers.
-
-  return rows;
-};
-
-// Deletes a broker from the database
-module.exports.deleteBrokers = async function (broker_ids) {
-
-  let pg_result;
-  try {
-    pg_result = await query('UPDATE brokers SET active = false WHERE broker_id = ANY($1) returning *', [broker_ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deletebrokers: %s', JSON.stringify(broker_ids));
+  const getDefaultVCONAccount = function () {
+    let accounts = getVCONAccounts();
+    let defaultSender = preferences.getGlobalPrefs().general.default_vconSender;
+    let idx = accounts.findIndex(b => b.vcon_account == defaultSender);
+    return accounts[idx == -1 ? 0 : idx].vcon_account;
   }
-  return pg_result.rows.map((row) => row.broker_id);
-};
 
-async function insert_broker(broker) {
-  // Initialise the query string and array.
+  return {
+    subscribe,
+    set,
+    get: getBroker,
+    name,
+    add,
+    update: updateBroker,
+    remove,
+    generateRecipientsList,
+    getVCONAccounts,
+    getDefaultVCONAccount,
+  };
+}());
 
-  let a = [];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(broker, a, f, v, ['broker_id']);
-  // TODO Checking for valid username. Currently done in the frontend.
-  // Assemble the insert query string
-
-  let qs;
-  qs = 'INSERT INTO brokers (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') ON CONFLICT ON CONSTRAINT brokers_pkey';
-  qs += ' DO UPDATE SET ';
-  qs += f.map((val, idx) => val + '=' + v[idx]).join(',');
-  qs += ',active = true';
-  qs += ' WHERE brokers.active = false';
-  qs += ' RETURNING *';
-
-  // Now execute the query
-  let rows;
-  let new_password = Math.random().toString(36).slice(-8);
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-    await query(`UPDATE brokers SET password = PGP_SYM_ENCRYPT($1, '${config.database.encryption_key}') WHERE broker_id = $2`, [new_password, rows[0].broker_id]);
-    rows[0].new_password = new_password;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
-
-async function update_broker(broker) {
-  // Initialise the query string and array.
-
-  let a = [broker.broker_id];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(broker, a, f, v, ['broker_id']);
-
-  // Assemble the update query string
-
-  let qs;
-  qs = 'UPDATE broker_list SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE broker_id = $1 RETURNING *';
-
-  // Now execute the query
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
+export default brokers;

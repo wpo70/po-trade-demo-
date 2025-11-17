@@ -1,106 +1,48 @@
 'use strict';
 
-const { query, makeQueryArrays } = require('.');
-const { activeGateway } = require('../map');
-const { sendToAllClients } = require('../send');
-const { logger } = require('../utils/logger.js');
+import { writable, get } from 'svelte/store';
 
-const refreshIntervals = new Map();
+const confos = (
+  function () {
 
-/** Start interval to refresh the MW ids in the confo every 9 seconds, stopping automatically when all ids are found  */
-function autoRefreshInterval(confo_id) {
-  function needsRefreshing(confos) {
-    for (let confo of confos) {
-      const ids_str = confo.split("MW:")[1];
-      if (ids_str.includes("NA")) { return true; }
-    }
-    return false;
-  }
+    const { subscribe, set, update } = writable([]);
 
-  if (!activeGateway('userId')) { return; }
+    const add = function (confo) {
+      update(store => {
+        store.unshift(confo);
+        return store;
+      });
+    };
 
-  const interval = setInterval(async (id) => {
-    let result = await updateConfosMW(id);
-    sendToAllClients({refresh_confos: result});
-    if (!needsRefreshing(Object.values(result.confos))) {
-      clearInterval(refreshIntervals.get(id));
-    }
-  }, 9000, confo_id);
+    const update_confo = function (confo) {
+      update(store => {
+        let idx = store.findIndex((c) => c.confo_id == confo.confo_id);
+        if (idx != -1) store[idx].confos = confo.confos;
+        return store;
+      });
+    };
 
-  refreshIntervals.set(confo_id, interval);
-}
+    const remove = function (ids) {
+      update(store => {
+        for (let id of ids){
+          let idx;
+          idx = store.findIndex(n => n.confo_id == id);
+          if (idx != -1) {
+            store.splice(idx, 1);
+          }
+        }
+        return store;
+      });
+    };
 
-module.exports.updateConfosMW = updateConfosMW;
-async function updateConfosMW(id) {
-  let result = await query(`call update_confo_mw_values(${id})`);
-  return JSON.parse(result.rows[0].update_result);
-}
+    return {
+      subscribe,
+      get,
+      set,
+      add,
+      remove,
+      update_confo,
+    };
+  }());
 
-module.exports.getAllConfos = async function () {
-  let results = (await query('SELECT * FROM confos ORDER BY confo_id DESC')).rows;
-  let deletes = [];
-  let now = new Date().getDate();
-  results = results.filter(c => {
-    if (new Date(c.time_submitted).getDate() >= now) { return true; }
-    deletes.push(c.confo_id);
-  });
-  if (deletes.length) {
-    let delete_confos = await deleteConfos(deletes);
-    sendToAllClients({delete_confos});
-  }
-  return results;
-}
-
-module.exports.insertConfos = async function (confo) {
-  let ids = (await query(
-      "Select trade_id from "
-      + "unnest($1::TEXT[]) WITH ORDINALITY AS t(ov_id, idx) "
-      + "LEFT JOIN trades on trades.trade_id_ov = ov_id "
-      + "ORDER BY idx", [confo.trade_ids])
-    ).rows;
-    
-  confo.trade_ids = ids.map(r => r.trade_id);
-  let rows = [];
-
-  let a = [];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(confo, a, f, v, ['confo_id']);
-  // TODO Checking for valid username. Currently done in the frontend.
-  // Assemble the insert query string
-
-  let qs;
-  qs = 'INSERT INTO confos (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') ON CONFLICT ON CONSTRAINT confos_pkey';
-  qs += ' DO UPDATE SET ';
-  qs += f.map((val, idx) => val + '=' + v[idx]).join(',');
-  qs += ' RETURNING *';
-
-  // Now execute the query
-  try {
-      const pg_result = await query(qs, a);
-      rows = pg_result.rows;
-      autoRefreshInterval(rows[0].confo_id);
-  } catch (err) {
-      logger.error(err.message);
-      logger.error('Query: %s', qs);
-      rows = [];
-  }
-  return rows;
-};
-
-module.exports.deleteConfos = deleteConfos;
-async function deleteConfos(confo_ids) {
-  let pg_result;
-  try {
-    pg_result = await query('DELETE FROM confos WHERE confo_id = ANY($1) returning *', [confo_ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteconfos: %s', JSON.stringify(confo_ids));
-  }
-  return pg_result.rows.map((row) => row.confo_id);
-};
+export default confos;

@@ -1,28 +1,55 @@
 'use strict';
 
-const { query } = require('.');
-// const { logger } = require('../utils/logger.js');
+import { writable, get } from 'svelte/store';
+import websocket from '../common/websocket';
+import trade_reviews from './trade_reviews';
+import user from './user';
 
-module.exports.getNotifications = async function (broker_id, after) {
-  let after_ts = /^[^.]*/.exec(new Date(after).toISOString().replace('T', ' '))[0];
-  let data = await query('SELECT * FROM notifications WHERE broker_id = $1 AND timestamp > $2', [broker_id, after_ts]);
-  return data.rows;
-};
+const notifications = (
+  function () {
 
-module.exports.sendNotifications = async function (sender, msg) {
-  // TODO: hanlde potential injections (check that $ syntax does this)
-  let { brokers, subject, body } = msg;
-  if (!body.length) { body = null; }
-  let qs = "INSERT INTO notifications (broker_id, sender, subject, body) VALUES ";
-  for (let [idx, b] of brokers.entries()) {
-    qs += `(${b}, $1, $2, $3)`;
-    qs += idx != brokers.length-1 ? ', ' : ' RETURNING *';
-  }
-  let data = await query(qs, [sender, subject, body]);
-  return data.rows;
-};
+    const { subscribe, set, update } = writable([]);
 
-module.exports.deleteNotification = async function (broker_id, notification) {
-  let data = await query("DELETE FROM notifications WHERE broker_id = $1 AND notification_id = $2 RETURNING *", [broker_id, notification]);
-  return data.rows;
-};
+    const add = function (n) {
+      update(store => {
+        const me = user.get();
+        let existing = store.map(n => n.notification_id);
+        if (n.broker_id == me && !existing.includes(n.notification_id)) {
+          store.unshift(n);
+        }
+        return store;
+      });
+    };
+
+    const remove = function (id) {
+      let idx;
+      update(store => {
+        idx = store.findIndex(n => n.notification_id == id);
+        if (idx != -1) {
+          store.splice(idx, 1);
+        }
+        return store;
+      });
+      if (idx != -1) {
+        websocket.deleteNotification(id);
+      }
+    };
+
+    const count = function() {
+      const me = user.get();
+      const reviews = get(trade_reviews);
+      let rev_count = reviews.reduce((count, tr) => tr.reviewers.includes(me) && !tr.reviewed_by.includes(me) ? ++count : count, 0);
+      return get(notifications).length + rev_count;
+    };
+
+    return {
+      subscribe,
+      get,
+      set,
+      add,
+      remove,
+      count,
+    };
+  }());
+
+export default notifications;

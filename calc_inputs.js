@@ -1,120 +1,111 @@
 'use strict';
 
+import { writable, get } from 'svelte/store';
 
-const { makeQueryArrays, query } = require(".");
-const { logger } = require("../utils/logger");
+const calc_inputs = (
+  function () {
 
-module.exports.insertCalcInputs = async function (calc_inputs) {
+    const { subscribe, set, update } = writable(null);
 
-  const rows= [];
-  var pg_row;
+    let prev = {};
 
-  // Loop over the array and add each calc_input to the database, returning its ID.
-  // If the insert query fails for whatever reason the return value will be empty.
+    const my_set = function (db_data) {
+      // This function is called with an Array of calc_input objects on initialisation.  They have to
+      // be grouped by product_id
 
-  for (let calc_input of calc_inputs) {
-    pg_row = await insert_calc_input(calc_input);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+      var store = {};
 
-  // Return an array of calc_inputs
+      for (let data of db_data) {
+        // Get the array for this product_id
 
-  return rows;
-};
+        prev[data.calculation_id] = {};
 
-module.exports.updateCalcInputs = async function (calc_inputs) {
-  // Loop over the array of calc_inputs and update them in the database in separate
-  // transactions.  Return all of the new calc_input IDs.  Although this code allows
-  // for an array of calc_inputs to be inserted, in practice they will only ever come
-  // one at a time.
+        const product_id = data.product_id;
+        if (!store.hasOwnProperty(product_id)) {
+          store[product_id] = [];
+        }
+        const the_calc_inputs = store[product_id];
 
-  const rows = [];
-  var pg_row;
+        // Add the calc_input to the array.
 
-  // Loop over the array and update each calc_input in the database.
+        the_calc_inputs.push(data);
+      }
 
-  for (let calc_input of calc_inputs) {
-    pg_row = await update_calc_input(calc_input);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+      // Set the store with the new data.
+      set.call(this, store);
+    };
 
-  // Return the array of new calculation_ids.
+    const add = function (calc_input) {
+      update(store => {
+        if (!store.hasOwnProperty(calc_input[0].product_id)) {
+          store[calc_input[0].product_id] = [];
+        }
+        store[calc_input[0].product_id].unshift(calc_input[0]);
 
-  return rows;
-};
+        return store;
+      });
+    };
 
-// To delete an calc_input set the closed time.
-// if no time was specified, use NOW()
+    const remove = function (id, pid) {
+      update(store => {
+        if (!store.hasOwnProperty(pid)) {
+          store[pid] = [];
+        }
+        let list = store[pid];
+        for (let i = 0; i < list.length; i++) {
+          if (list[i].calculation_id == id) {
+            store[pid].splice(i, 1);
+            break;
+          }
+        }
+        return store;
+      });
+    };
 
-module.exports.deleteCalcInputs = async function (calculation_ids) {
-  try {
-    await query('DELETE FROM calc_inputs WHERE calculation_id = ANY($1)', [calculation_ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteOrders: %s', JSON.stringify(calculation_ids));
-  }
-};
+    const update_inputs = function (calc_input) {
+      update(store => {
+        if (!store.hasOwnProperty(calc_input[0].product_id)) {
+          store[calc_input[0].product_id] = [];
+        }
+        let list = store[calc_input[0].product_id];
+        for (let i = 0; i < list.length; i++) {
+          if (list[i].calculation_id == calc_input[0].calculation_id) {
+            store[calc_input[0].product_id][i].inputs = calc_input[0].inputs;
+            break;
+          }
+        }
+        return store;
+      });
+    };
 
-async function update_calc_input(calc_input) {
-  // Initialise the query string and array.
+    const getRecentId = function (pid) {
+      let store = get(calc_inputs)[pid];
+      let highestId = 0;
+      for (let i of store) {
+        if (i.calculation_id > highestId) {
+          highestId = i.calculation_id;
+        }
+      }
+      return highestId;
+    };
 
-  let a = [calc_input.calculation_id];
-  let f = [];
-  let v = [];
+    const getByProduct = function (pid) {
+      let store = get(calc_inputs);
+      return store[pid];
+    };
 
-  makeQueryArrays(calc_input, a, f, v, ['calculation_id']);
 
-  // Assemble the update query string
+    return {
+      subscribe,
+      get,
+      add,
+      set: my_set,
+      remove,
+      update_inputs,
+      getByProduct,
+      getRecentId,
+    };
 
-  let qs;
-  qs = 'UPDATE calc_inputs SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE calculation_id = $1 RETURNING *';
+  }());
 
-  // Now execute the query
-
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
-
-async function insert_calc_input(calc_input) {
-
-  let a = [];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(calc_input, a, f, v, ['calculation_id']);
-
-  let qs;
-  qs = 'INSERT INTO calc_inputs (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') RETURNING *';
-
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query : %s', qs);
-    rows = [];
-  }
-
-  return rows;
-}
+export default calc_inputs;

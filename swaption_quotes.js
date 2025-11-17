@@ -1,57 +1,84 @@
 'use strict';
 
+import { get, writable } from 'svelte/store';
+import { tenorToYear } from '../common/formatting';
 
-const { makeQueryArrays, query } = require(".");
-const { logger } = require("../utils/logger");
+/**
+ * @typedef {Object} BBSWSwaptionQuote
+ * @property {number} swaption_quote_id
+ * @property {number} swap_year
+ * @property {number} option_year
+ * @property {number} strike
+ * @property {number} premium
+ * @property {number} mmp
+ */
 
-module.exports.insertSwaptionQuotes = async function (quotes) {
+/**
+ * @typedef {Object} RBASwaptionQuote
+ * @property {number} quote_id
+ * @property {string} rba_meeting
+ * @property {string} option_expiry - ISO date string
+ * @property {string} swap_tenor
+ * @property {string} option_type
+ * @property {string} strike
+ * @property {number} strike_rate
+ * @property {string} swap_start_date - ISO date string
+ * @property {string} swap_end_date - ISO date string
+ * @property {string} swap_freq
+ * @property {string} floating_rate_index
+ * @property {number} premium
+ */
 
-  const rows= [];
-  var pg_row;
+const swaption_quotes = (function () {
+  const { subscribe, update } = writable({
+    'bbsw': [],
+    'rba': []
+  });
 
-  // Loop over the array and add each quote to the database, returning its ID.
-  // If the insert query fails for whatever reason the return value will be empty.
+  /**
+   * @param {BBSWSwaptionQuote[]} val
+   */
+  const setBBSW = (val) => {
+    update(store => {
+      store.bbsw = val;
+      return store;
+    });
+  };
 
-  for (let quote of quotes) {
-    pg_row = await insert_quote(quote);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
+  /**
+   * @param {RBASwaptionQuote[]} val
+   */
+  const setRBA = (val) => {
+    update(store => {
+      store.rba = val;
+      return store;
+    });
+  };
+
+  /**
+   * @param {string} swapTerm
+   * @param {string} optionExpiry
+   * @returns {BBSWSwaptionQuote}
+   */
+  const getBBSW = (swapTerm, optionExpiry) => {
+    const store = get(swaption_quotes).bbsw;
+
+    if(swapTerm == undefined || optionExpiry == undefined) {
+      return undefined;
     }
-  }
 
-  // Return an array of quotes
+    return store.find(quote =>
+      quote.swap_year === tenorToYear(swapTerm)[0] &&
+      quote.option_year === tenorToYear(optionExpiry)[0]
+    );
+  };
 
-  return rows;
-};
+  return {
+    subscribe,
+    setBBSW,
+    setRBA,
+    getBBSW,
+  };
+}());
 
-async function insert_quote(quote) {
-
-  let a = [];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(quote, a, f, v, ['swaption_quote_id']);
-
-  let qs;
-  qs = 'INSERT INTO swaption_quotes (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') ON CONFLICT ON CONSTRAINT swaption_quotes_swap_year_option_year_key';
-  qs += ' DO UPDATE SET ';
-  qs += f.map((val, idx) => val + '=' + v[idx]).join(',');
-  qs += ' RETURNING *';
-
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query : %s', qs);
-    rows = [];
-  }
-
-  return rows;
-}
-
+export default swaption_quotes;

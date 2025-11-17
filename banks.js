@@ -1,82 +1,34 @@
-const { query } = require('.');
-const { logger } = require('../utils/logger.js');
+'use strict';
 
-const validateLegalEntity = async (bank) => {
-  if (!bank) return false;
-  const qs = `SELECT * FROM banks WHERE ov_bank_id='${bank}'`;
-  // Now execute the query
-  
-  try {
-    const pg_result = await query(qs);
-    if (pg_result.rowCount == 0) {
-      return false;
+// Banks are largely unchanging structures.
+
+import { writable, get } from 'svelte/store';
+
+const banks = (function () {
+  const { subscribe, set } = writable([]);
+
+  const getBank = function (bank_id) {
+    // Get a bank by its ID.
+
+    if (bank_id === 0) {
+      return { bank_id: 0, bank: 'Legs' };
     }
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    return false;
+
+    const arr = get(banks);
+    const bank = arr.find(b => b.bank_id == bank_id);
+    return bank;
+  };
+  const getBankFromShortCode = function (shortCode) {
+    if (!shortCode) return;  
+    return get(banks).find(b => b.ov_bank_id == shortCode);
   }
-  return true;
-};
 
-const validateInterestGroup = async (bank, group) => {
-  if (!bank || !group ) return false;
-  const qs = `SELECT * FROM banks WHERE ov_bank_id='${bank}'`;
-  
-  // Now execute the query
-  let rows;
+  return {
+    subscribe,
+    set,
+    get: getBank,
+    getBankFromShortCode
+  };
+}());
 
-  try {
-    const pg_result = await query(qs);
-    if (pg_result.rowCount == 0) {
-      return false;
-    } else {
-      rows = pg_result.rows[0].bank_id;
-      // Query Interest Group
-      const qs_ = `SELECT * FROM interest_groups WHERE bank_id=${rows} AND name='${group}'`;
-      const pg_result_ = await query(qs_);
-      if (pg_result_.rowCount === 0) {
-        return false;
-      } else {
-        return true;
-      } 
-    } 
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    return false;
-  }
-};
-
-const validateBIC = async (bank, bic) => {
-  if (!bank || !bic ) return false;
-  const qs = `SELECT * FROM banks WHERE ov_bank_id='${bank}'`;
-
-  // Now execute the query
-    
-  let rows;
-  try {
-    const pg_result = await query(qs);
-    if (pg_result.rowCount == 0) {
-      return false;
-    } else {
-      rows = pg_result.rows[0].bank_id;
-      // Query BIC
-      const qs_ = `SELECT * FROM bic WHERE bank_id=${rows} AND markitbiccode='${bic}'`;
-      const pg_result_ = await query(qs_);
-      if (pg_result_.rowCount == 0) {
-        return false;
-      } else { 
-        return true;
-      }
-    } 
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    return false;
-  }
-};
-
-module.exports.validateLegalEntity = validateLegalEntity;
-module.exports.validateInterestGroup = validateInterestGroup;
-module.exports.validateBIC = validateBIC;
+export default banks;

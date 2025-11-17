@@ -1,138 +1,220 @@
 'use strict';
 
-const { query, makeQueryArrays } = require('.');
-const { logger } = require('../utils/logger.js');
+// Orders is constantly updated from the server.  It will be
+// initialised with every order in one go.  Then it will be updated
+// with single orders as the brokers enter them.
 
-module.exports.insertOrders = async function (orders) {
-  // Loop over the array of orders and add them to the database in separate
-  // transactions.  Return all of the new order IDs.  Although this code allows
-  // for an array of orders to be inserted, in practice they will only ever come
-  // one at a time.
+/* 
+Navigate the orders like this:
 
-  const rows = [];
-  var pg_row;
+order = orders[product_id][<integer>];
+*/
 
-  // Loop over the array and add each order to the database, returning its ID.
-  // If the insert query fails for whatever reason the return value will be empty.
+import { writable, get } from 'svelte/store';
+import websocket from '../common/websocket';
+import traders from './traders';
+import ocos from './ocos';
 
-  for (let order of orders) {
-    pg_row = await insert_order(order);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+const orders = (
+  function () {
+    // Set the orders to null temporarily.  It will re-initialised
+    // with an empty structure by the products store when the products
+    // are defined.
 
-  // Return the array of new order_ids.
-  return rows;
-};
+    const { subscribe, set, update } = writable(null);
 
-module.exports.updateOrders = async function (orders) {
-  // Loop over the array of orders and update them in the database in separate
-  // transactions.  Return all of the new order IDs.  Although this code allows
-  // for an array of orders to be inserted, in practice they will only ever come
-  // one at a time.
+    const getOrdersOnly = function () {
+      // Returns all orders, emitting interests
 
-  const rows = [];
-  var pg_row;
+      const store = get(this);
+      let orders = {};
+      for(let prodId in store){
+        const prod = store[prodId];
+        orders[prodId] = [];
+        for(let object of prod){
+          if(!object.eoi)
+            orders[prodId].push(object);
+        }
+      }
+      return orders;
+    };
 
-  // Loop over the array and update each order in the database.
+    const getInterestsOfProduct = function (productId) {
+      // Returns all interests, emitting orders
 
-  for (let order of orders) {
-    pg_row = await update_order(order);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+      const store = get(this);
+      const interests = [];
+      for(let object of store[productId]){
+        if(object.eoi)
+          interests.push(object);
+      }
+      return interests;
+    }; 
 
-  // Return the array of new order_ids.
-  return rows;
-};
+    const getOrder = function (order_id, include_interests=false) {
+      // Return a single order from the store with matching order_id
+      let store;
+      if(include_interests) { store = get(orders); }
+      else { store = orders.getOrdersOnly(); }
+      let arr, order;
+      let prods = Object.keys(store);
+      for (let p_id of prods) {
+        arr = store[p_id];
+        order = arr.find(o => o.order_id === order_id);
+        if (order) return order;
+      }
+      return null;
+    };
 
-// To delete an order set the closed time.
-// if no time was specified, use NOW()
+    const getOrdersByTrader = function (trader_id, include_interests=false) {
+      let store;
+      if(include_interests) 
+        store = get(orders);
+      else
+        store = orders.getOrdersOnly();
 
-module.exports.deleteOrders = async function (order_ids, time) {
-  try {
-    if (time)
-      await query('UPDATE orders SET time_closed = ($2) WHERE order_id = ANY($1)', [order_ids, time]);
-    else
-      await query('UPDATE orders SET time_closed = NOW() WHERE order_id = ANY($1)', [order_ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteOrders: %s', JSON.stringify(order_ids));
-  }
-};
+      return Object.keys(store)
+        .flatMap((product_id) =>
+          store[product_id].filter((o) => o.trader_id === trader_id));
+    };
 
-// Update an order in the database.  ORDER is an object with properties matching
-// the database orders table.
+    const getOrdersByProduct = function (productId, include_interests=false) {
+      let arr;
+      if(include_interests) 
+        arr = get(orders);
+      else
+        arr = orders.getOrdersOnly();
+      return arr[productId];
+    };
 
-async function insert_order(order) {
-  // Initialise the query string and array.
+    const add = function (order) {
+      // Add a single order to the store.  The orders are stored, by
+      // product, in a flat array, newest first, oldest
+      // last.
 
-  let a = [];
-  let f = [];
-  let v = [];
+      update(store => {
+        store[order.product_id].unshift(order);
+        return store;
+      });
+    };
 
-  // The Bloomberg gateway will provide either or both of the yield and dv01.
+    const remove = function (order_ids) {
+      // Remove one or more orders identified by their IDs.  Return a list of the orders that were removed.
 
-  makeQueryArrays(order, a, f, v, ['order_id', 'offer_brokerage', 'bid_brokerage', 'objectType']);
+      let order_list = [];
 
-  // Assemble the insert query string
+      // Remove the orders from the store.
 
-  let qs;
-  qs = 'INSERT INTO orders (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') RETURNING *';
+      update(store => {
+        let x;
+        // Get all of the product keys.
 
-  // Now execute the query
+        let prods = Object.keys(store);
 
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
+        // Loop over the orders.
 
-// Update an order in the database.  ORDER is an object with properties matching
-// the database orders table.
+        for (let order_id of order_ids) {
+          // Loop over the products.
 
-async function update_order(order) {
-  // Initialise the query string and array.
+          for (let product_id of prods) {
 
-  let a = [order.order_id];
-  let f = [];
-  let v = [];
+            // Get the array that the order might belong to.  See if the
+            // order is in the array and remove it.
 
-  // The Bloomberg gateway will provide either or both of the yield and dv01.
+            let a = store[product_id];
+            x = a.findIndex((o) => o.order_id === order_id);
+            if (x >= 0) {
+              order_list.push(a[x]);
+              a.splice(x, 1);
+              break;
+            }
+          }
 
-  makeQueryArrays(order, a, f, v, ['order_id', 'objectType']);
+          // If the loop ends and x < 0 it means the order_id was not found.  Throw an exception.
 
-  // Assemble the update query string
+          if (x < 0) {
+            console.error('Tried to remove non-existent order', order_id);
+          }
+        }
 
-  let qs;
-  qs = 'UPDATE orders SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE order_id = $1 RETURNING *';
+        // Update the store with the returned value.
 
-  // Now execute the query
+        return store;
+      });
 
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
+      // Return a list of the orders that were deleted.
+
+      return order_list;
+    };
+
+    const updateOrder = function (order_id, key, value) {
+      let updated_order;
+
+      // NOTE: call this function with care
+      // it should only be used to update keys that can be updated directly
+      // Reject updates for keys that require deletion/reinsertion
+
+      if (
+        key === 'product_id' ||
+        key === 'bid' ||
+        key === 'years' ||
+        key === 'price' ||
+        key === 'trader_id' ||
+        key === 'time_placed' ||
+        key === 'time_closed'
+      ) {
+        throw new Error('Tried to update invalid order key: ', key);
+      }
+
+      update(store => {
+        // Get the order that is to be updated
+        let o = getOrder(order_id);
+        o[key] = value;
+        updated_order = o;
+        return store;
+      });
+
+      return updated_order;
+    };
+
+    /**
+     * Called when a trade is completed. Remove associated orders if the ticket/s are marked as oco
+     * @params tickets
+    */
+    const removeOCOOrders = function (tickets) {
+      let oco_orders_set = new Set();
+      for (let t of tickets) {
+        let offer_oco = ocos.isOCO(t.bic_offer.bank_id, t.product_id);
+        if (offer_oco) { ocos.setOCO(t.bic_offer.bank_id, t.product_id, false); }
+        let bid_oco = ocos.isOCO(t.bic_bid.bank_id, t.product_id);
+        if (bid_oco) { ocos.setOCO(t.bic_bid.bank_id, t.product_id, false); }
+        let oco_orders_ = getOrdersByProduct(t.product_id)
+          .filter(i =>
+            (traders.get(i.trader_id).bank_id === t.bic_bid.bank_id && bid_oco) || 
+            (traders.get(i.trader_id).bank_id === t.bic_offer.bank_id && offer_oco))
+          .map(({order_id}) => order_id);
+        // Adding oco orders to the set
+        oco_orders_.forEach(i => oco_orders_set.add(i));
+        // Excluding the main orders
+        oco_orders_set.delete(t.offer.order_id);
+        oco_orders_set.delete(t.bid.order_id);
+      }
+      if (oco_orders_set.size !== 0 ) websocket.deleteOrders(Array.from(oco_orders_set));
+    };
+
+    return {
+      subscribe,
+      get: getOrder, 
+      getOrdersByProduct,
+      set,
+      add,
+      remove,
+      updateOrder,
+      getOrdersByTrader,
+      getOrdersOnly,
+      getInterestsOfProduct,
+      removeOCOOrders
+    };
+  }());
+
+export default orders;

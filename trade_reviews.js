@@ -1,95 +1,125 @@
 'use strict';
 
-const { query, makeQueryArrays } = require('.');
-const { logger } = require('../utils/logger.js');
+import { writable, get } from 'svelte/store';
+import user from './user';
+import orders from './orders';
+import websocket from '../common/websocket';
 
-module.exports.insertTradeReviews = async function (tradeReviews) {
+const trade_reviews = (
+  function () {
 
-  const rows = [];
-  var pg_row;
-  for (let review of tradeReviews) {
-    pg_row = await insert_review(review);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
+    const { subscribe, set, update } = writable([]);
+
+    const add = function (reviews) {
+      update(store => {
+        for (let r of reviews) {
+          store.push(r);
+        }
+        return store;
+      });
+    };
+
+    const update_review = function (review) {
+      if (review.length == 0) return;
+      if (review[0].status == "Failed" || review[0].status == "Finished") {
+        remove([review[0].review_id]);
+        return;
+      }
+
+      update(store => {
+        for (let i = 0; i < store.length; i++){
+          if (store[i].review_id == review[0].review_id){
+            store[i] = review[0];
+            break;
+          }
+        }
+        return store;
+      });
+    };
+
+    const remove = function (ids) {
+      update(store => {
+        for (let i = 0; i < store.length; i++){
+          if (ids.includes(store[i].review_id)){
+            store.splice(i, 1);
+          }
+        }
+        return store;
+      });
+    };
+
+    const getFromTrade = function (trade) {
+      let store = get(trade_reviews);
+      if (!store || store.length == 0) return null;
+      else {
+        for (let review of store){
+          let orders = trade.getAllOrders();
+          let correct = true;
+          for (let o of orders) {
+            if (!review.orders.includes(o.order_id)) {
+              correct = false;
+              break;
+            }
+          }
+          if (correct) {
+            return (review);
+          }
+        }
+      }
+      return null;
+    };
+
+    function containsOrder (id) {
+      let store = get(trade_reviews);
+      for (let r of store) {
+        if (r.orders.includes(id)) {
+          return r;
+        }
+      }
+      return null;
     }
-  }
 
-  return rows;
-};
+    const validate = function (trade_review) {
+      function price_validation() {
+        if (orders_cache.length > 2) {
+          // TODO: Add proper validation handling for multi-cpty trades
+          return true;
+        } else {
+          return orders_cache[0].price == orders_cache[1].price;
+        }
+      }
 
-module.exports.updateTradeReviews = async function (review) {
+      const me = user.get();
+      if (trade_review == null || !trade_review.reviewers.includes(me) || trade_review.reviewed_by.includes(me)) {
+        return false;
+      }
+      const orders_cache = trade_review.orders.map(o => orders.get(o));
+      // If order doesn't exist, remove the trade review
+      if (orders_cache.some(o => !o)) {
+        remove([trade_review.review_id]);
+        return false;
+      }
+      // If order exists, validate the reviews if its firmed and has a correct price. 
+      if (orders_cache.every(o => o.firm) && price_validation()) {
+        return true;
+      } else {
+        remove([trade_review.review_id]);
+        websocket.deleteTradeReview([trade_review.review_id]);
+        return false;
+      }
+    };
 
-  const rows = [];
-  var pg_row;
-  
-  pg_row = await update_review(review);
-  if (pg_row.length !== 0) {
-    rows.push(pg_row[0]);
-  }
+    return {
+      subscribe,
+      update_review,
+      get,
+      add,
+      remove,
+      set,
+      getFromTrade,
+      containsOrder,
+      validate
+    };
+  }());
 
-  return rows;
-};
-
-async function insert_review(review) {
-
-  let a = [];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(review, a, f, v, ['review_id']);
-
-  let qs;
-  qs = 'INSERT INTO trade_reviews (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') RETURNING *';
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
-
-async function update_review(review) {
-
-  let a = [review.review_id];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(review, a, f, v, ['review_id', 'acknowledged']);
-
-  let qs;
-  qs = 'UPDATE trade_reviews SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE review_id = $1 RETURNING *';
-
-  // Now execute the query
-
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
-
-module.exports.deleteTradeReviews = async function (review_ids) {
-  try {
-    await query('DELETE FROM trade_reviews WHERE review_id = ANY($1)', [review_ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteTradeReviews: %s', JSON.stringify(review_ids));
-  }
-};
+export default trade_reviews;

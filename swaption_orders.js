@@ -1,144 +1,66 @@
 'use strict';
 
-const { makeQueryArrays, query } = require(".");
-const { logger } = require("../utils/logger");
+import { writable, get } from 'svelte/store';
 
-module.exports.refreshSwaptionOrders = async function (broker_id) {
-  const permission = await query(`SELECT broker_id, permission -> 'Not Anonymous' AS anonpermission FROM brokers WHERE broker_id = $1`,[broker_id]);
-  let latest_orders = await query('SELECT * FROM swaption_orders ORDER BY timestamp ASC');
-  let data = latest_orders.rows;
-  if(!permission.rows[0].anonpermission){
-    data.forEach(row => {
-      row.markit_id = "XXXXXXXX";
-      row.trade_id_ov = "TRADE-XXXXXXXXXX";
+const swaption_orders = (function () {
+
+  const { subscribe, update } = writable({
+    rows: [],
+    last_added: 0,
+  });
+
+  const set_Swaptions = function (newTrades) {
+    update(store => {
+      store.last_added = newTrades.length - store.rows.length;
+      store.rows = newTrades;
+      return store;
     });
-  }
-  return data;
-};
-
-module.exports.insertSwaptionOrder = async function (orders) {
-
-  const rows = [];
-  var pg_row;
-
-  // Loop over the array and add each order to the database, returning its ID.
-  // If the insert query fails for whatever reason the return value will be empty.
-
-  for (let order of orders) {
-    pg_row = await insert_order(order, 'swaption_orders');
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
-
-  // Return an array of orders
-
-  return rows;
-};
-
-const swaptionsCount = async function () {
-  let qs = "SELECT count(*) FROM swaption_orders";
-
-  let rows;
-  try {
-    const pg_result = await query(qs);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-  }
-
-  return rows[0].count;
-};
-module.exports.swaptionsCount = swaptionsCount;
-
-// Returns the amount of trades in the database that occured in the current month
-
-const swaptionsThisMonth = async function () {
-  let qs = ` SELECT count(*) FROM swaption_orders
-    WHERE EXTRACT(MONTH FROM timestamp AT TIME ZONE '-10') = EXTRACT(MONTH FROM NOW() AT TIME ZONE '-10')
-    AND EXTRACT(YEAR FROM timestamp AT TIME ZONE '-10') = EXTRACT(YEAR FROM NOW() AT TIME ZONE '-10');`;
-
-  let rows;
-  try {
-    const pg_result = await query(qs);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-  }
-
-  return rows[0].count;
-};
-module.exports.swaptionsThisMonth = swaptionsThisMonth;
-
-const swaptionsToday = async function () {
-  let qs = ` SELECT count(*) FROM swaption_orders
-    WHERE EXTRACT(MONTH FROM timestamp AT TIME ZONE '-10') = EXTRACT(MONTH FROM NOW() AT TIME ZONE '-10')
-    AND EXTRACT(YEAR FROM timestamp AT TIME ZONE '-10') = EXTRACT(YEAR FROM NOW() AT TIME ZONE '-10')
-    AND EXTRACT(DAY FROM timestamp AT TIME ZONE '-10') = EXTRACT(DAY FROM NOW() AT TIME ZONE '-10');`;
-
-  let rows;
-  try {
-    const pg_result = await query(qs);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-  }
-  return rows[0].count;
-};
-module.exports.swaptionsToday = swaptionsToday;
-
-const swaptionsPending = async function () {
-  let qs = ` SELECT count(*) FROM swaption_orders
-    WHERE markit_status != 'Accepted/Affirmed/Released' OR markit_status IS NULL;`;
-
-  let rows;
-  try {
-    const pg_result = await query(qs);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-  }
-  return rows[0].count;
-};
-module.exports.swaptionsPending = swaptionsPending;
-
-module.exports.getAllSwaptionCounts = async function () {
-  return {
-    total: await swaptionsCount(),
-    monthly: await swaptionsThisMonth(),
-    daily: await swaptionsToday(),
-    pending: await swaptionsPending(),
   };
-};
 
-async function insert_order(order, table_name) {
 
-  let a = [];
-  let f = [];
-  let v = [];
+  // this could be used to update the store with only the trades it is missing on refresh rather than simply resetting the entire store.
+  const addSwaption = function (newOrder) {
+    update(store => {
+      store.last_added = 1;
+      store.rows.push(newOrder);
+      return store;
+    });
+  };
 
-  makeQueryArrays(order, a, f, v, ['order_id',  'bic_buyer', 'bic_seller']);
+  const updateSwaption = function (updatedOrder) {
+    update(store => {
+      store.rows.forEach((trade, index) => {
+        if(updatedOrder.order_id === trade.order_id) {
+          store.rows[index] = updatedOrder;
+          store.last_added = 0;
+        }
+      });
+      return store;
+    });
+  };
 
-  let qs;
-  qs = `INSERT INTO ${table_name} (`;
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') RETURNING *';
+  const getAllRBA = function () {
+    const store = get(swaption_orders);
+    return store.filter(trade => trade.rba);
+  };
 
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query : %s', qs);
-    rows = [];
-  }
+  const getAllStandard = function () {
+    const store = get(swaption_orders);
+    return store.filter(trade => !trade.rba);
+  };
+  const getTradeIdMax = function() {
+    const store = get(swaption_orders);
+    return Math.max(...store.rows.map(i => i.order_id));
+  };
+  return {
+    subscribe,
+    set_Swaptions,
+    addSwaption,
+    updateSwaption,
+    getAllRBA,
+    getAllStandard,
+    getTradeIdMax
+  };
+}());
 
-  return rows;
-}
+export default swaption_orders;

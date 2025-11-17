@@ -1,212 +1,210 @@
 'use strict';
 
-const { query, makeQueryArrays } = require('.');
-const { logger } = require('../utils/logger.js');
+// Banks and traders are largely unchanging structures.
+import { writable, get } from 'svelte/store';
+import banks from './banks.js';
+import brokers from './brokers.js';
+import user from './user.js';
 
+const traders = (
+  function () {
 
-module.exports.insertTraders = async function (traders) {
-  // Loop over the array of traders and add them to the database in separate
-  // transactions.  Return all of the new traders.  Although this code allows
-  // for an array of traders to be inserted, in practice they will only ever come
-  // one at a time.
+    let anonVals = {};
+    let anonBankNum = 1;
+    let anonTraderNum = 1;
+    let sorted_traders = [];
+    const { subscribe, set, update } = writable([]);
 
-  const rows= [];
-  var pg_row;
+    const getTrader = function (trader_id) {
+      // Get the trader by ID.
+      if (trader_id === 0) {
+        return { trader_id: 0, firstname: "", lastname: "", preferredname: "", bank_id: 0 };
+      }
 
-  // Loop over the array and add each trader to the database, returning itself.
-  // If the insert query fails for whatever reason the return value will be empty.
+      const arr = get(traders);
+      const trader = arr.find(t => t.trader_id === trader_id);
+      return trader;
+    };
 
-  for (let trader of traders) {
-    pg_row = await insert_trader(trader);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+    const bankName = function (trader_id) {
+      // Get the name of the trader's bank by trader ID.
 
-  // Return the array of new traders.
+      const trader = getTrader(trader_id);
+      const bank = banks.get(trader.bank_id);
+      const broker = brokers.get(user.get());
 
-  return rows;
-};
+      if (trader.bank_id == 0){
+        return "Legs";
+      }
+      // Checks if user is allowed to view this data, if not replaces it with "Bank X"
+      if (broker) {
+        if (!broker.permission["Not Anonymous"]){
+          if (!anonVals[bank.bank]){
+            anonVals[bank.bank] = "Bank " + anonBankNum;
+            anonBankNum++;
+          }
+          return anonVals[bank.bank];
+        } else {
+          return bank.bank;
+        }
+      }
 
-module.exports.updateTraders = async function (traders) {
-  // Loop over the array of traders and update them in the database in separate
-  // transactions.  Return all of the new traders. Although this code allows
-  // for an array of traders to be updated, in practice they will only ever come
-  // one at a time.
+    };
 
-  const rows = [];
-  var pg_row;
+    const name = function (trader_id) {
+      // Return the name of the trader (first and last names) by ID.
 
-  // Loop over the array and update each trader in the database.
+      const trader = getTrader(trader_id);
+      if (!trader) return;
+      const name = (trader.firstname === "") ? trader.lastname : trader.firstname + " " + trader.lastname;
+      const broker = brokers.get(user.get());
 
-  for (let trader of traders) {
-    pg_row = await update_trader(trader);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+      // Checks if user is allowed to view this data, if not replaces it with "Trader X"
+      if (!broker.permission["Not Anonymous"]){
+        if (!anonVals[name]){
+          anonVals[name] = "Trader " + anonTraderNum;
+          anonTraderNum++;
+        }
+        return anonVals[name];
+      } else {
+        return name;
+      }
+    };
 
-  // Return the array of updated traders.
+    const fullName = function (trader) {
+      // Static function.  Return the full name of the trader, including preferred name and the bank code.
 
-  return rows;
-};
+      if (trader == null) return;
 
-// Deletes a trader from the database
-// Returns an array of order ids deleted (if any orders need to be deleted to remove this trader)
+      // Get the trader's bank.
 
-module.exports.deleteTraders = async function (trader_ids) {
+      const bank = banks.get(trader.bank_id);
 
-  let pg_result;
-  try {
-    await query('UPDATE traders SET active = false WHERE trader_id = ANY($1)', [trader_ids]);
-    pg_result = await query('UPDATE orders SET time_closed = NOW() WHERE trader_id = ANY ($1) AND time_closed IS NULL RETURNING order_id;', [trader_ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteTraders: %s', JSON.stringify(trader_ids));
-  }
+      // Concatenate the trader's fullname and bank.
 
-  return pg_result.rows.map((row) => row.order_id);
-};
+      let name;
 
-async function insert_trader(trader) {
-  // Initialise the query string and array.
+      // Checks if user is allowed to view this data, if not replaces it with "Trader X [Bank X]"
+      const broker = brokers.get(user.get());
+      if (!broker.permission["Not Anonymous"]){
+        let traderName =  trader.firstname + " " + trader.lastname;
+        if (!anonVals[traderName]){
+          anonVals[traderName] = "Trader " + anonTraderNum;
+          anonTraderNum++;
+        }
+        let bankName = bank.bank;
+        if (!anonVals[bankName]){
+          anonVals[bankName] = "Bank " + anonBankNum;
+          anonBankNum++;
+        }
+        return anonVals[traderName] + " [" + anonVals[bankName] + "]";
+      } else {
+        name = trader.firstname + " " + trader.lastname + " [" + bank.bank + "]";
+        return name;
+      }
+    };
 
-  let a = [];
-  let f = [];
-  let v = [];
+    const fullNameWithPreferred = function (trader) {
+      // Static function.  Return the full name of the trader, including preferred name and the bank code.
 
-  makeQueryArrays(trader, a, f, v, ['trader_id']);
+      if (typeof trader === "undefined") return;
 
-  // Assemble the insert query string
+      // Get the trader's bank.
 
-  let qs;
-  qs = 'INSERT INTO traders (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') ON CONFLICT ON CONSTRAINT traders_ov_trader_id_key';
-  qs += ' DO UPDATE SET ';
-  qs += f.map((val, idx) => val + '=' + v[idx]).join(',');
-  qs += ',active = true';
-  qs += ' WHERE traders.active = false';
-  qs += ' RETURNING *';
+      const bank = banks.get(trader.bank_id);
 
-  // Now execute the query
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
+      // Concatenate the trader's fullname and bank.
 
-async function update_trader(trader) {
-  // Initialise the query string and array.
+      let name = trader.firstname;
+      if (trader.preferredname !== "") {
+        name += " (" + trader.preferredname + ")";
+      }
+      name += " " + trader.lastname + " [" + bank.bank + "]";
 
-  let a = [trader.trader_id];
-  let f = [];
-  let v = [];
+      return name;
+    };
 
-  makeQueryArrays(trader, a, f, v, ['trader_id']);
+    const initials = function (trader_id) {
+      // Return the initials of the trader (first and last names) by ID.
 
-  // Assemble the update query string
+      const trader = getTrader(trader_id);
+      const initials = trader.firstname.charAt(0) + trader.lastname.charAt(0);
 
-  let qs;
-  qs = 'UPDATE traders SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE trader_id = $1 RETURNING *';
+      return initials;
+    };
 
-  // Now execute the query
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
-// Update report email
-module.exports.updateReportEmail = async function (report) {
-  // Initialise the query string and array.
+    const add = function (trader) {
+      // adds a trader to the store
+      update(store => {
+        store.push(trader);
+        return store;
+      });
+    };
 
-  let a = [report[0].id];
-  let f = [];
-  let v = [];
+    const updateTrader = function (trader) {
+      // updates a trader in the store
 
-  makeQueryArrays(report[0], a, f, v, ['id']);
+      let updatedTrader;
 
-  // Assemble the update query string
+      update(store => {
 
-  let qs;
-  qs = 'UPDATE eod SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE id = $1 RETURNING *';
+        let idx = store.findIndex((t) => t.trader_id === trader.trader_id);
 
-  // Now execute the query
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
+        if (idx !== -1) {
+          store[idx] = trader;
+          updatedTrader = trader;
+        }
 
-// Create report email
-module.exports.insertReportEmail = async function (report) {
- // Initialise the query string and array.
+        return store;
+      });
 
- let a = [];
- let f = [];
- let v = [];
+      return updatedTrader;
+    };
 
- makeQueryArrays(report[0], a, f, v, ['id']);
+    const remove = function (trader_ids) {
+      // deletes a trader from the store
 
-  // Assemble the insert query string
+      let deleted_traders = [];
 
-  let qs;
-  qs = 'INSERT INTO eod (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') RETURNING *';
+      update(store => {
+        trader_ids.forEach((trader_id) => {
+          let idx = store.findIndex((t) => t.trader_id === trader_id);
 
-  // Now execute the query
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
+          if (idx !== -1) {
+            deleted_traders.push(store[idx]);
+            store.splice(idx, 1);
+          }
+        });
 
-module.exports.deleteReportEmails = async function (report_email_ids) {
-  let rows;
-  let pg_result;
-  try {
-    pg_result =await query('DELETE from eod WHERE id = ANY($1)', [report_email_ids]);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteReportEmails: %s', JSON.stringify(report_email_ids));
-  }
-  return rows;
-};
+        return store;
+      });
+
+      return deleted_traders;
+    };
+
+    const setSortedTraders = function (sorted_ts) {
+      sorted_traders = sorted_ts;
+    };
+
+    const getSortedTraders = function () {
+      return sorted_traders;
+    };
+
+    return {
+      subscribe,
+      set,
+      get: getTrader,
+      bankName,
+      name,
+      fullName,
+      fullNameWithPreferred,
+      initials,
+      add,
+      update: updateTrader,
+      remove, 
+      setSortedTraders,
+      getSortedTraders,
+    };
+  }());
+
+export default traders;

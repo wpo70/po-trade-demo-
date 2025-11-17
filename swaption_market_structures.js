@@ -1,95 +1,81 @@
-const { makeQueryArrays, query } = require(".");
-const { logger } = require("../utils/logger");
+'use strict';
 
+import { get, writable } from 'svelte/store';
 
-module.exports.addSwaptionStructure = async function(structures) {
-  const rows = [];
-  var pg_row;
+/**
+ * @typedef {Object} SwaptionMarketStructure
+ * @property {number} id
+ * @property {string} option_expiry
+ * @property {string} swap_term
+ * @property {string} strike
+ * @property {string} option_type
+ * @property {string} bid_price
+ * @property {string} offer_price
+ * @property {string} bid_volume
+ * @property {string} offer_volume
+ */
 
-  for (let structure of structures) {
-    pg_row = await insert_structure(structure);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+const swapation_market_structures = (function() {
+  const { subscribe, set, update } = writable([]);
 
-  return rows;
-};
+  /**
+   * Adds a new structure to the store.
+   * @param {SwaptionMarketStructure} val
+   */
+  const add = (val) => {
+    if (!get(swapation_market_structures)) set([]);
+    update(store => {
+      if (Array.isArray(val)) {
+        store.push(...val);
+      } else {
+        store.push(val);
+      }
+      return store;
+    });
+  };
 
-module.exports.updateSwaptionStructures = async function(structures) {
-  const rows = [];
-  var pg_row;
+  /**
+   * Removes a structure with the id.
+   * @param {number} ids
+   */
+  const remove = (ids) => {
+    update(store => {
+      for (let id of ids) {
+        const idx = store.findIndex(el => el.id === id);
+        if (idx === -1) {
+          return store;
+        }
+        store.splice(idx, 1);
+        return store;
+      }
+    });
+  };
 
-  for (let structure of structures) {
-    pg_row = await update_structure(structure);
-    if (pg_row.length !== 0) {
-      rows.push(pg_row[0]);
-    }
-  }
+  /**
+   * Updates the structure with the same id with the passed in value.
+   * @param {SwaptionMarketStructure[]} arr
+   */
+  const updateValue = (arr) => {
+    update(store => {
+      for (let val of arr) {
+        const idx = store.findIndex(el => el.id === val.id);
+        if (idx === -1) {
+          return store;
+        }
 
-  return rows;
-};
+        store[idx] = val;
+      }
+      return store;
+    });
+  };
 
-module.exports.deleteSwaptionStructures = async function(ids) {
-  try {
-    await query('DELETE FROM swaption_market_structures WHERE id = ANY($1)', [ids]);
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('deleteSwaptionStructures: %s', JSON.stringify(ids));
-  }
-};
+  return {
+    subscribe,
+    set,
+    add,
+    remove,
+    update: updateValue
+  };
+}());
 
-async function insert_structure(structure) {
-  let a = [];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(structure, a, f, v, ['id']);
-
-  let qs = '';
-  qs = 'INSERT INTO swaption_market_structures (';
-  qs += f.join(',');
-  qs += ') VALUES (';
-  qs += v.join(',');
-  qs += ') RETURNING *';
-
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-  return rows;
-}
-
-async function update_structure(structure) {
-  let a = [structure.id];
-  let f = [];
-  let v = [];
-
-  makeQueryArrays(structure, a, f, v, ['id']);
-
-  let qs = '';
-  qs += 'UPDATE swaption_market_structures SET (';
-  qs += f.join(',');
-  qs += ') = (';
-  qs += v.join(',');
-  qs += ') WHERE id = $1 RETURNING *';
-
-  let rows;
-  try {
-    const pg_result = await query(qs, a);
-    rows = pg_result.rows;
-  } catch (err) {
-    logger.error(err.message);
-    logger.error('Query: %s', qs);
-    rows = [];
-  }
-
-  return rows;
-}
-
-
+export default swapation_market_structures;
