@@ -4,23 +4,25 @@
 // Import this module with "import { query, getClient } from './db'"
 
 const { Pool } = require('pg');
-const config = require('../../config.json');
 const { logger } = require('../utils/logger.js');
 
-// Create a pool of connections
-
-const pool = new Pool({
-  user: 'postgres',  // Default PostgreSQL user
-  host: 'localhost',  // Local database
-  database: 'potrade',  // Your database name
-  password: '1Will-po1',  // Replace with your PostgreSQL password
-  port: 5432  // Default PostgreSQL port
-});
+// Create a pool of connections - use DATABASE_URL if available (Azure), otherwise local config
+const pool = process.env.DATABASE_URL 
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    })
+  : new Pool({
+      user: 'postgres',
+      host: 'localhost',
+      database: 'potrade',
+      password: '1Will-po1',
+      port: 5432
+    });
 
 // Create a simple query method.  This executes a query and returns the result.
 // In the QUERY_STRING $1 is replaced with the first element of the PARAMS
 // array, $2 with the second and so on.
-
 // The result that is returned has properties result.rows (array of objects),
 // result.fields (array of objects with name and dataTypeId), result.command
 // (string "SELECT", "INSERT", "UPDATE", "DELETE", etc.) and result.rowCount
@@ -28,12 +30,10 @@ const pool = new Pool({
 
 module.exports.query = async function (query_string, params) {
   // Measure the time it takes to run the query.
-
   var pg_result = false;
   const start = Date.now();
 
-  // Execute the query 
-
+  // Execute the query
   try {
     pg_result = await pool.query(query_string, params);
   } catch (err) {
@@ -43,12 +43,10 @@ module.exports.query = async function (query_string, params) {
   }
 
   // Log the time it took to run the query.
-
   const duration = Date.now() - start;
   logger.info('executed query %O', { query_string, duration, rows: pg_result.rowCount });
 
   // Return the result.
-
   return pg_result;
 };
 
@@ -59,45 +57,36 @@ module.exports.query = async function (query_string, params) {
 
 module.exports.getClient = async function () {
   // Get a client from the pool.
-
   const client = await pool.connect();
 
   // Save the true query and release methods before we monkey patch them.
-
   const query = client.query;
   const release = client.release;
 
   // Create a timeout of 5 seconds, after which we will log this client's last
   // query.
-
   const timeout = setTimeout(() => {
     logger.error('A client has been checked out for more than 5 seconds!');
     logger.error(`The last executed query on this client was: ${client.lastQuery}`);
   }, 5000);
 
   // Monkey patch the query method to keep track of the last query executed
-
   client.query = (...args) => {
     client.lastQuery = args;
     return query.apply(client, args);
   };
 
   // Monkey patch the release method to return the client to its original state.
-
   client.release = () => {
     // clear our timeout
-
     clearTimeout(timeout);
-
     // set the methods back to their old un-monkey-patched version
-
     client.query = query;
     client.release = release;
     return release.apply(client);
   };
 
   // Return the client
-
   return client;
 };
 
@@ -110,7 +99,6 @@ module.exports.getClient = async function () {
 
 module.exports.makeQueryArrays = function (obj, a, f, v, excluded) {
   // Loop over the properties of the object.
-
   for (let field in obj) {
     if (!excluded?.includes(field)) {
       a.push(obj[field]);
