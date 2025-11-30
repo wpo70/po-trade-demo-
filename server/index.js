@@ -55,17 +55,26 @@ const sessionParser = session({
     checkPeriod: 86400000 // prune expired entries every 24h
   }),
   saveUninitialized: false,
-  secret: 'po-trade-session-secret-change-in-production',  // FIXED: hardcoded secret instead of config.https.session.secret
+  secret: 'po-trade-session-secret-change-in-production',
   resave: false
 });
 
-// Serve static files from the 'public' folder.
+// Serve static files from the 'public' folder with correct MIME types
 
 app.use(function (req, res, next) {
   logger.info(`${req.protocol} request: ${req.method} ${req.originalUrl} ${req.ip}`);
   next();
 });
-app.use(express.static('public'));
+
+app.use(express.static('public', {
+  setHeaders: (res, path) => {
+    if (path.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    } else if (path.endsWith('.css')) {
+      res.setHeader('Content-Type', 'text/css');
+    }
+  }
+}));
 
 // All requests to non-static routes use sessions and JSON.  This middleware
 // leaves the parsed JSON object at req.body and the session information in
@@ -74,7 +83,6 @@ app.use(express.static('public'));
 app.use(sessionParser);
 app.use(express.json());
 app.use(function (req, res, next) {
-  // FIXME: don't log secrets. actually, encrypt the secrets
   logger.info(`REQUEST BODY ${JSON.stringify(req.body)}`);
   next();
 });
@@ -115,6 +123,7 @@ app.post('/v1/auth/login', restLogin);
 // Feed Trade from API
 app.post('/v1/api/trades', verifyToken, trades);
 app.get('/v1/auth/login', restLogin);
+
 // Handle password change request
 
 app.post('/change_password', change_password);
@@ -158,7 +167,6 @@ http_server.on('upgrade', function (req, socket, head) {
 
 ws_server.on('connection', function (ws, req) {
   console.log('server ws on connection():');
-  //console.log(ws, req);
 
   // Associate the connection(socket) with the session userId.
 
@@ -178,7 +186,7 @@ ws_server.on('connection', function (ws, req) {
   ws.on('pong', function () {
     sess.is_alive = true;
   });
-  // console.log(sess);
+
   // Handle incoming messages depending on whether the websocket is for a
   // gateway or not.
 
@@ -204,7 +212,7 @@ ws_server.on('connection', function (ws, req) {
     // Log a message.
     logger.info('Opened POC-BOT websocket %O', userId);
   } else if (sess.is_confobot)  {
-  // Handle messages from confo-bot
+    // Handle messages from confo-bot
     ws.on('message', message => confobotReceived(message, sess));
 
     // Log a message.
@@ -330,9 +338,7 @@ setInterval(sendPingtoPost, 50000);
 setInterval(sendPingtoMarkit, 50000);
 setInterval(sendPingtoConfo, 50000);
 
-// Start a 60 second interval timer that will ping all connections.  This is
-// just to keep all connections open - although I have no evidence that this is
-// truly necessary.
+// Start a 60 second interval timer that will ping all connections.
 setInterval(function ping () {
   for (const sess of sessions.values()) {
     if (!sess.is_alive) {
