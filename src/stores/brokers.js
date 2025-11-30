@@ -106,6 +106,7 @@ const brokers = (function () {
 
   const getDefaultVCONAccount = function () {
     let accounts = getVCONAccounts();
+    if (!accounts || accounts.length === 0) return null;
     let defaultSender = preferences.getGlobalPrefs().general.default_vconSender;
     let idx = accounts.findIndex(b => b.vcon_account == defaultSender);
     return accounts[idx == -1 ? 0 : idx].vcon_account;

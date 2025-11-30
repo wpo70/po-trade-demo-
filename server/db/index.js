@@ -10,11 +10,11 @@ const { logger } = require('../utils/logger.js');
 // Create a pool of connections
 
 const pool = new Pool({
-  user: config.database.user,
-  host: config.database[config.env].host,
-  database: config.database[config.env].database,
-  password: config.database.password,
-  port: config.database.port
+  user: 'postgres',  // Default PostgreSQL user
+  host: 'localhost',  // Local database
+  database: 'potrade',  // Your database name
+  password: '1Will-po1',  // Replace with your PostgreSQL password
+  port: 5432  // Default PostgreSQL port
 });
 
 // Create a simple query method.  This executes a query and returns the result.
@@ -55,7 +55,7 @@ module.exports.query = async function (query_string, params) {
 // The getClient function returns a client from the pool.  This allows a
 // transaction to be run (BEGIN, COMMIT, ROLLBACK).  When the transaction is
 // over call client.release.  An error will be logged if this is not done within
-// 10 seconds.
+// 5 seconds.
 
 module.exports.getClient = async function () {
   // Get a client from the pool.
@@ -67,13 +67,13 @@ module.exports.getClient = async function () {
   const query = client.query;
   const release = client.release;
 
-  // Create a timeout of 10 seconds, after which we will log this client's last
+  // Create a timeout of 5 seconds, after which we will log this client's last
   // query.
 
   const timeout = setTimeout(() => {
-    logger.warn('A client has been checked out for more than 10 seconds!');
-    logger.warn(`The last executed query on this client was: ${client.lastQuery}`);
-  }, 10000);
+    logger.error('A client has been checked out for more than 5 seconds!');
+    logger.error(`The last executed query on this client was: ${client.lastQuery}`);
+  }, 5000);
 
   // Monkey patch the query method to keep track of the last query executed
 

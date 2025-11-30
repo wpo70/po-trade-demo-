@@ -2,7 +2,7 @@
 
 import quotes from '../stores/quotes.js';
 import active_product from '../stores/active_product.js';
-import { roundUpToNearest } from '../common/formatting.js';
+import { roundToNearest } from '../common/formatting.js';
 import { addDays, addMonths, toTenor } from '../common/formatting.js';
 import { calc3mSps, calc6mSps, getFwdMid } from './pricing_models.js';
 import prices from '../stores/prices.js';
@@ -35,6 +35,7 @@ class Interest {
       price --> this may or may not be null for any interest object
       start_date
       fwd
+      confirmed
       muted
     */
     this.check();
@@ -71,8 +72,10 @@ class Interest {
     // Return true if the order volume is below minimum market parcel.  
     // Get the minimum market parcel, which is always at the last year.
 
-    let mmp = roundUpToNearest(quotes.mmp(this.product_id, this.years, this?.fwd), 2);
-    return (roundUpToNearest(this.volume, 2) < mmp);
+    if (products.isStir(this.product_id) || products.isFwd(this.product_id)) return; // until we can detirmine mmp for these products
+
+    let mmp = Math.round(quotes.mmp(this.product_id, this.years));
+    return (roundToNearest(this.volume, 1) < mmp);
   }
 
   isOutright () {

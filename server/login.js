@@ -33,7 +33,7 @@ module.exports.login = async function (req, res) {
     if (!pg_result.hasOwnProperty('rows') || pg_result.rows.length === 0) {
       let pg_password = await query(`SELECT temporary_password FROM brokers where username = $1`,[username]);
       let now = new Date().getTime();
-      let expiry_time = new Date(pg_password.rows?.[0]?.temporary_password?.timestamp).getTime();
+      let expiry_time = new Date(pg_password.rows[0].temporary_password.timestamp).getTime();
       if ((now - expiry_time) <= 1800000){
         let tempPass = pg_password.rows[0].temporary_password.password;
         if(password !== tempPass){
@@ -60,7 +60,8 @@ module.exports.login = async function (req, res) {
       is_pocbot: false,
       broker_id: pg_result.rows[0].broker_id,
       accesslevel: pg_result.rows[0].accesslevel,
-      permission: pg_result.rows[0].permission
+      permission: pg_result.rows[0].permission,
+      permissions: pg_result.rows[0].permission
     });
 
     // Send a simple message of success to the web browser.
@@ -126,7 +127,6 @@ module.exports.restLogin =async function (req,res){
           "timestamp": new Date().toUTCString()
         },
         "accessToken": token,
-        "validUntil": new Date().getTime() + 900000,
       };
       res.status(200).send(response);
     }

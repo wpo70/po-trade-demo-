@@ -1,5 +1,6 @@
 <script>
-  import { convertDateToString, roundToNearest, tenorToYear, toBPPrice, toEFPSPSTenor, toPrice, toRBATenor, toTenor, toVolumeString } from "../../common/formatting";
+  import { onMount } from "svelte";
+  import { convertDateToString, tenorToYear, timestampToISODate, toBPPrice, toEFPSPSTenor, toPrice, toRBATenor, toTenor, toVolumeString } from "../../common/formatting";
   import { getRbaRuns } from "../../common/rba_handler";
   import Validator from "../../common/validator";
   import active_product from "../../stores/active_product";
@@ -29,7 +30,7 @@
   });
   
   let setDefaultDv01 = () => {dv01component?.setDefaultDv01();}
-  let tenorSet = (bool = false) => {tenorComponent?.tenorSet(fields, bool);}
+  let tenorSet = () => {tenorComponent?.tenorSet(fields);}
 
   $: {
     defaultFields();
@@ -45,11 +46,18 @@
         case 18:
         case 27:
           return [17, 18, 27];
+        case 103:
+          return [20];
         default:
           return [id, products.fwdOf(id)];
       }
     }
     let options = optionsFrom(prod);
+    // For RBA OIS page (103), force product to 20
+    if (prod == 103) {
+      options = [20];
+      fields.product = 20;
+    }
     // Get Non - forward products
     let nf = products.nonFwd(prod);
     if (nf != prod) { options.push.apply(options, optionsFrom(nf)); fields.isFWD = true; }
@@ -109,7 +117,7 @@
         if (p == null || p == undefined) { fields.price.reset(); }
         else { 
           let priceStr;
-          if ((fields.product == 1 || fields.product == 3 || fields.product == 20) && 
+          if ((fields.product == 1 || fields.product == 3 || fields.product == 20 || fields.product == 103) && 
               (selected?.years?.length > 1 || selected?.spread_start_date)) { priceStr = toBPPrice(p); }
           else { priceStr = toPrice(p); }
           fields.price.set(p, priceStr);
@@ -121,7 +129,6 @@
         fields.specific = false;
         fields.fwd.setProd(fields.product);
         fields.fwd.set(+selected.fwd, toTenor(selected.fwd));
-        fields.isFWD = true;
       } else if (selected.start_date != null) {
         fields.fwd.reset();
         fields.specific = true;
@@ -141,6 +148,7 @@
           fields.tenor.set([0.25], toEFPSPSTenor(selected.start_date));
           fields.specific = true;
           break;
+        case 103:
         case 20:
           if (selected.years && !selected.years.includes(1000)) {
             fields.tenor.set(selected.years, toRBATenor(selected.years));
@@ -188,64 +196,63 @@
       // set volume fields
       if (selected.volume) {
         fields.dv01_Currency = products.currency(fields.product);
-        if (selected.years[0] != 1000) {
-          let val = quotes.getDV01FromVol(fields.product, selected.years, selected.volume, selected?.fwd);
-          fields.dv01.set(val, roundToNearest(val, 1).toString());
-        }
+        if (selected.years[0] != 1000) fields.dv01.str = quotes.getDV01FromVol(fields.product, selected.years, selected.volume);
         fields.volume.set(selected.volume, toVolumeString(selected.volume));
-        fields.dv01.hasPriority = true;
       } else {
         setDefaultDv01();
         tenorSet();
-        fields.dv01.hasPriority = false;
       }
     }
   }
 
-
-  
 </script>
-  <div style="width: 400px;display: flex;flex-direction: column;gap: 16px;" on:keypress|stopPropagation>
-    <TraderSelector 
-      bind:fields
-      {order_ft}/>
-    <OtherOptions 
-      bind:fields 
-      on:tenorSet={(e) => tenorSet(e?.detail ?? false)}/>
-    <ProductSelector 
-      bind:fields 
-      bind:selected 
-      bind:product_options 
-      on:setDefaultDv01={setDefaultDv01}
-      on:tenorSet={(e) => tenorSet(e?.detail ?? false)}/>
-    <TenorOptions 
-      bind:this={tenorComponent} 
-      bind:fields {rbaTenors} 
-      on:setDefaultDv01={setDefaultDv01}/>
-    <PriceField 
-      bind:fields/>
-    <VolumeField 
-      bind:fields 
-      {rbaTenors} 
-      on:setDefaultDv01={setDefaultDv01}/>
-    <Dv01Options 
-      bind:this={dv01component} 
-      bind:fields 
-      on:tenorSet={(e) => tenorSet(e?.detail ?? false)}/>
-    <SubmitClear 
-      {rbaTenors} 
-      bind:fields 
-      bind:selected 
-      on:reset 
-      on:tenorSet={(e) => tenorSet(e?.detail ?? false)} 
-      on:setDefaultDv01={setDefaultDv01}
-      on:defaultFields={defaultFields}
-      on:order_updated/>
-    </div>
 
+<div class="form" on:keypress|stopPropagation>
+  <TraderSelector 
+    bind:fields
+    {order_ft}/>
+  <OtherOptions 
+    bind:fields 
+    on:tenorSet={tenorSet}/>
+  <ProductSelector 
+    bind:fields 
+    bind:selected 
+    bind:product_options 
+    on:setDefaultDv01={setDefaultDv01}
+    on:tenorSet={tenorSet}/>
+  <TenorOptions 
+    bind:this={tenorComponent} 
+    bind:fields {rbaTenors} 
+    on:setDefaultDv01={setDefaultDv01}/>
+  <PriceField 
+    bind:fields/>
+  <VolumeField 
+    bind:fields 
+    {rbaTenors} 
+    on:setDefaultDv01={setDefaultDv01}/>
+  <Dv01Options 
+    bind:this={dv01component} 
+    bind:fields 
+    on:tenorSet={tenorSet}/>
+  <SubmitClear 
+    {rbaTenors} 
+    bind:fields 
+    bind:selected 
+    on:reset 
+    on:tenorSet={tenorSet} 
+    on:setDefaultDv01={setDefaultDv01}
+    on:defaultFields={defaultFields}
+    on:order_updated/>
+</div>
 
 <style>
 
+.form {
+  width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
 :global(.my_radio .bx--radio-button-group) {
   margin: 0;
 }

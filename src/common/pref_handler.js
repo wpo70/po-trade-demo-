@@ -17,7 +17,6 @@ function errToast(msg, type) {
 
 export async function addWhiteboardTenor(product_id, years, fwd) {
   if (fwd != null) { years = [fwd].concat(years); }
-  else if (!Array.isArray(years)) { years = [years]; }
   let t_str = years.toString();
   let prefs = preferences.getBrokerPrefs().whiteboard_tenors;
   let changed = false;
@@ -60,7 +59,6 @@ export async function addWhiteboardTenor(product_id, years, fwd) {
     // then update the store and db
     if (changed) {
       websocket.updateBrokerPrefs({broker_id: user.get(), key: 'whiteboard_tenors', value: prefs});
-      if (product_id == 18) { prices.modifyStructure18(years, true); }
       prices.defaultPrices(product_id);
       prices.sort(product_id);
     }
@@ -69,7 +67,6 @@ export async function addWhiteboardTenor(product_id, years, fwd) {
 
 export async function addWhiteboardGlobal(product_id, years, fwd) {
   if (fwd != null) { years = [fwd].concat(years); }
-  else if (!Array.isArray(years)) { years = [years]; }
   let t_str = years.toString();
   let prefs =  preferences.getBrokerPrefs().whiteboard_tenors;
   let g_prefs = structuredClone(preferences.getGlobalPrefs().whiteboard_tenors);
@@ -99,7 +96,6 @@ export async function addWhiteboardGlobal(product_id, years, fwd) {
       errToast(err.message, "error");
     }
   } finally {
-    if (product_id == 18) { prices.modifyStructure18(years, true); }
     prices.defaultPrices(product_id);
     prices.sort(product_id);
   }

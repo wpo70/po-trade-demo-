@@ -62,7 +62,7 @@ async function update_review(review) {
   let f = [];
   let v = [];
 
-  makeQueryArrays(review, a, f, v, ['review_id', 'acknowledged']);
+  makeQueryArrays(review, a, f, v, ['review_id']);
 
   let qs;
   qs = 'UPDATE trade_reviews SET (';

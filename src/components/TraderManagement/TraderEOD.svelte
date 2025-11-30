@@ -24,7 +24,6 @@ import banks from '../../stores/banks';
 
 import websocket from '../../common/websocket';
 import Validator from '../../common/validator';
-import DraggableModal from '../Utility/DraggableModal.svelte';
 
 // eod eom email
 let email_selection =[];
@@ -215,70 +214,68 @@ function handleDelete (event) {
     <!-- svelte-ignore missing-declaration -->
     <!-- svelte-ignore a11y-no-static-element-interactions -->
     <!------------ Update modal ---------------->
-    <div class="email_update_form">
-      <DraggableModal
+    <Modal 
+    size="sm"
       on:close={() => copyToForm(undefined)} 
+      preventCloseOnClickOutside passiveModal 
       bind:open={is_update_open} 
-      heading="Email Update"
-      >
-        <svelte:fragment slot="body">
-          <div class="modal_email-btn"style="border: 1px solid #cbcaca; padding: 1rem;">
-            <Form on:submit={handleSubmit}>
-              <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem; "on:keypress|stopPropagation>
-                <div style="display: flex; flex-direction: row; gap: 1rem;">
-                  <ComboBox
-                    titleText="Bank"
-                    items={
-                      $banks.map(bank => {
-                        return {
-                          id: bank.bank_id,
-                          text: bank.bank,
-                          ...bank
-                        }
-                      })
+      modalHeading="Email Update">
+      <div class="modal_email-btn"style="border: 1px solid #cbcaca; padding: 1rem;">
+        <Form on:submit={handleSubmit}>
+        
+          <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1rem; "on:keypress|stopPropagation>
+            <div style="display: flex; flex-direction: row; gap: 1rem;">
+              <ComboBox
+                titleText="Bank"
+                items={
+                  $banks.map(bank => {
+                    return {
+                      id: bank.bank_id,
+                      text: bank.bank,
+                      ...bank
                     }
-                    bind:selectedId={fields.bank_id}
-                    invalid={bankInvalid}
-                    invalidText='Bank must be selected'
-                    {shouldFilterItem}
-                  />
-                  <!-- </div>
-                  <div class="md-grid-item" on:keypress|stopPropagation> -->
-                  <TextInput
-                    bind:value={fields.email.str}
-                    bind:dirty={fields.email.dirty}
-                    bind:invalid={fields.email.invalid}
-                    invalidText={fields.email.error_message}
-                    labelText="Email Address"
-                  />
-                </div>
-                
-                <div  on:keypress|stopPropagation>
-                  <Checkbox
+                  })
+                }
+                bind:selectedId={fields.bank_id}
+                invalid={bankInvalid}
+                invalidText='Bank must be selected'
+                {shouldFilterItem}
+              />
+              <!-- </div>
+              <div class="md-grid-item" on:keypress|stopPropagation> -->
+                <TextInput
+                  bind:value={fields.email.str}
+                  bind:dirty={fields.email.dirty}
+                  bind:invalid={fields.email.invalid}
+                  invalidText={fields.email.error_message}
+                  labelText="Email Address"
+                />
+            </div>
+            
+            <div  on:keypress|stopPropagation>
+                <Checkbox
                   bind:checked={fields.eod_report}
                   labelText="End-Of-Date Report"
-                      />
-                </div>
-                
-                <div on:keypress|stopPropagation>
-                  <Checkbox
-                      bind:checked={fields.eom_report}
-                      labelText="End-Of-Month Report"
-                    />
-                  </div>
-                </div>
-                <div style="width:100%">
-                  <Button type="submit" kind={'primary'} size="default" >
-                    {fields.id === 0 ? 'Add Email' : 'Update Email'}
-                  </Button>
-              </div>
-            </Form>
+                />
+            </div>
+            
+            <div on:keypress|stopPropagation>
+                <Checkbox
+                  bind:checked={fields.eom_report}
+                  labelText="End-Of-Month Report"
+                />
+            </div>
           </div>
-        </svelte:fragment>
-      </DraggableModal>
-    </div>
-    
-      <!------------ Delete modal ---------------->
+          <div style="width:100%">
+            <Button type="submit" kind={'primary'} size="default" >
+              {fields.id === 0 ? 'Add Email' : 'Update Email'}
+            </Button>
+          </div>
+        </Form>
+      </div>
+    </Modal>
+
+    <!------------ Delete modal ---------------->
     <Modal 
       danger
       size="sx"
@@ -317,9 +314,5 @@ function handleDelete (event) {
 }
 :global(.modal_email-btn  .bx--list-box--expanded .bx--list-box__menu) {
   max-height: 160px;
-}
-
-:global(.email_update_form .bx--modal-container){
-  width: 800px;
 }
 </style>

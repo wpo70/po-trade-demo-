@@ -2,17 +2,17 @@
   import { afterUpdate, createEventDispatcher, onMount, tick } from 'svelte'
 
   import { Tooltip } from 'carbon-components-svelte';
-  import WhiteboardContextMenu from './WhiteboardContextMenu.svelte';
+  import WhiteBoardContextMenu from './WhiteBoardContextMenu.svelte';
   import PriceTable from './PriceTable.svelte';
   import Legs from './Legs.svelte';
-  import { addDays, addMonths, getTimelessDate, timestampToISODate } from '../common/formatting.js';
-  
+  import { addDays, addMonths, timestampToISODate } from '../common/formatting.js';
+
   import active_product from '../stores/active_product';
   import products from '../stores/products';
   import prices from '../stores/prices';
   import filters from '../stores/filters';
   import { selected_custom_wb } from '../stores/custom_whiteboards';
-  
+
   export let container_index = null;
   /**
    *  @price_data Structure of price {
@@ -24,7 +24,7 @@
    *      has: {bool} tracks whether the container has overflowed
    *      source: {integer || null} container index that overflowed and passed its data to this container
    *      block_idx: {integer || null} the block index where the overflow point occurred
-   *      table_max: {integer || null} the row (price table) index (specific price group row/index) where the overflow point occurred
+   *      idx: {integer || null} the row index (specific price group row/index) where the overflow point occurred
    *    }
    *  }
    */
@@ -32,19 +32,16 @@
   export let broad_tenor = null;
   export let cols_blueprint = [];
   export let lives_only = false;
-  export let allShapesPrices = [];
-  export let allNames = [];
 
   const dispatch = createEventDispatcher();
-
   /**
    * @price_blocks an Array of price data get from store prices, based on active_product
   */
   let price_blocks = [];
- 
- onMount(formatPriceBlocks);
- 
- $: wb_filters = filterSet($selected_custom_wb, $filters);
+
+  onMount(formatPriceBlocks);
+
+  $: wb_filters = filterSet($selected_custom_wb, $filters);
   function filterSet() {
     return wb_filters = $active_product < 0 ? ($selected_custom_wb.board_id !== -1 ? $selected_custom_wb.filters : $filters[0]) : $filters[$active_product];
   }
@@ -73,33 +70,25 @@
     }
   }
 
-  /* ======================================== Formatting and Filtering ======================================== */
+  // Formatting blocks and price tables
+  let today;
+  if (price_data?.stirsps) {
+    let now = new Date();
+    today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
 
-  /** 
-   * Formatting blocks and price tables
-   */
   function formatPriceBlocks(e) {
     if (!container) { return; } // handle reactive call - container not yet mounted
     if (price_data == null) { return; } // handle placeholder cols for resets
-    if (e?.detail?.collapsed) { resetContainers(); return; }
+    if (e?.detail?.colapsed) { resetContainers(); return; }
     
-    filterPriceBlocks();
-    
-    formatBlockOverflows(e);
-  }
-
-  let today;
-  /**
-   * Create the price group data array for the price tables based on this containers price data
-   */
-  function filterPriceBlocks() {
+    // Create the price group data array for the price tables based on this containers price data
     let new_blocks = [];
     if (price_data?.stirsps) {
       let half = $prices[18].slice(25*(price_data.stirsps/3 - 1), 25*(price_data.stirsps/3));
       if (!half[0] || half[0].length == 0) half.splice(0, 1);
-      let filtered = applyFilters(half);
-      new_blocks = [filtered.map((price_groups) => {
-          today ??= getTimelessDate();
+      half = applyFilters(half);
+      new_blocks = [half.map((price_groups) => {
           let todayMonth = today.getMonth();
           let spot = addDays(today, 1);
           let tommorrowMonth = spot.getMonth();
@@ -117,29 +106,18 @@
             if (pg.bids.length > 0 || pg.offers.length > 0) otherOrders = true;
             if (otherOrders && result) break;
           }
-
-          // If the broad price group is hidden, the spot date will not be persistent and will not be found by the last loop so result will be undefined,
-          // but if there is a specific-date order, other orders is true and so the spot date should be used for displaying the broads. This is found in the unfiltered list.
-          let location = price_groups[0].fwd*12;
-          if (!result && location >= 0 && location < 50) {
-            for(const pg of half[location]) {
-              if (pg.tenor == key) {
-                result = pg;
-                break;
-              }
-            }
-          }
-          
           return [result, otherOrders];
         })];
     } else if (price_data.data_array) {
       price_data.data_array.forEach(p => {
+        if (!$prices[p.prod]) return;
         new_blocks.push.apply(new_blocks, p.shape || p.shape === 0 ? [$prices[p.prod][p.shape]?.slice()] : $prices[p.prod].slice());
       });
     } else if (price_data.prod > 0) {
-      new_blocks = (price_data.shape || price_data.shape === 0 ? [$prices[price_data.prod]?.[price_data.shape]?.slice()] : $prices[price_data.prod]?.slice());
+      if ($prices[price_data.prod]) {
+        new_blocks = (price_data.shape || price_data.shape === 0 ? [$prices[price_data.prod]?.[price_data.shape]?.slice()] : $prices[price_data.prod]?.slice());
+      }
     }
-
     if (!price_data?.stirsps) { new_blocks = applyFilters(new_blocks); }
     new_blocks ??= [];
     if (JSON.stringify(new_blocks) != JSON.stringify(price_blocks))  {
@@ -147,15 +125,11 @@
       price_blocks = new_blocks;
       if (moved) { unshuffleSaveLegs(); }
     }
-  }
 
-  /** 
-   * Check the container exists within the bounding box. Shift and format as needed
-   */
-  function formatBlockOverflows(e) {
+    // Check the container exists within the bounding box. Shift and format as needed
     let reformat = null;
     formatBlock: {
-      // if (price_data.data_array?.some(m => m.prod == 17 || m.prod == 27)) { break formatBlock; } // TODO: this line is for a temporary exception - will be removed in a later version
+      if (price_data.data_array?.some(m => m.prod == 17 || m.prod == 27)) { break formatBlock; } // TODO: this line is for a temporary exception - will be removed in a later version
       let h_max = container.getBoundingClientRect().bottom;
       for (let [idx, price_block] of Array.from(container.getElementsByClassName("col_block")).entries()) {
         if (price_block.getBoundingClientRect().bottom > h_max) {
@@ -181,11 +155,11 @@
   }
 
   /*
-  * If a container extends beyond the WB bounding box, the overflowed contents should be moved to a new container
+   * If a container extends beyond the WB bounding box, the overflowed contents should be moved to a new container
    * Relevant data formatted as needed is dispatched to be spliced into the WB's array
   */
   function shiftPriceBlocks(reformObj) {
-    let new_col = structuredClone(price_data);
+    let new_col = {};
     if (price_data.data_array) {
       new_col.prod = price_data.data_array[reformObj.block_idx].prod;
       new_col.shape = price_data.data_array[reformObj.block_idx].shape;
@@ -195,9 +169,9 @@
     }
     new_col.start = reformObj.pos + (price_data.start || 0);
     new_col.overflow = {has:false, source:container_index}
-    if (new_col.start > $prices[new_col.prod][new_col.shape]?.length && !price_data.stirsps || price_data.stirsps && new_col.start > 24) {
+    if (new_col.start > $prices[new_col.prod][new_col.shape]?.length) {
       price_data.overflow.block_idx = reformObj.block_idx;
-      price_data.overflow.table_max = reformObj.pos;
+      price_data.overflow.idx = reformObj.pos;
       return;
     }
     if (reformObj.block_idx < price_blocks.length-1) {
@@ -217,15 +191,15 @@
           d.prod == val.prod && d.shape == val.shape
         ))
       );
-      new_col = {...price_data, data_array, overflow:{ has:false, source:null, block_idx:null, table_max:null }}
+      new_col = {data_array, overflow:{ has:false, source:null, block_idx:null, idx:null }}
     }
     price_data.overflow.block_idx = reformObj.block_idx;
-    price_data.overflow.table_max = reformObj.pos;
+    price_data.overflow.idx = reformObj.pos;
     dispatch("formatContainers", { type:"overflow", index:container_index, col:new_col });
   }
 
   afterUpdate(() => {
-    if (price_data != null && container)  {
+    if (price_data != null)  {
       let blocks = Array.from(container.getElementsByClassName("col_block"));
       if (!blocks.length || blocks.every(b => window.getComputedStyle(b).getPropertyValue("display") === "none")) {
         container.style.display = "none";
@@ -321,26 +295,10 @@
     return ret.filter(r => r.length);
   }
 
-  /* ======================================== Live Prices ======================================== */
-
-  /**
-   *  Dispatching to whiteboard to get prices for all shapes respective to product_id.
-   * 
-   *  Returns an empty array if the price block overflows into a new price table
-   *  as the original price table still stores all the values, even the ones that overflow.
-   */
-  export const sendPriceBlocks = () => (price_data.start == null && price_data?.broad_tenor == undefined) ? price_blocks : [];
-  
-  function bubbleProdId (e) {
-    dispatch('bubbledProdId', {selected: e.detail.selected, product_name: e.detail.product_name})
-  }
-
-  /* ======================================== Legs ======================================== */
-
+  // Handle the request to display the legs of a price
   let the_legs = null;
   let the_legs_pg_ref = "";
 
-  // Handle the request to display the legs of a price
   function showLegs(event) {
     if (price_data == null) return;
     // If a legs display is already being shown, destroy it first.
@@ -366,17 +324,10 @@
    */
   async function moveLegs() {
     await new Promise(res => setTimeout(res, 1));
-    const legs = container.getElementsByClassName("legs")[0];
+    let legs = container.getElementsByClassName("legs")[0];
     if (legs.getBoundingClientRect().bottom > container.getBoundingClientRect().bottom || !legs.nextElementSibling) {
-      const next_container = document.getElementById(`price-tables-container-${container_index+1}`);
+      let next_container = document.getElementById(`price-tables-container-${container_index+1}`);
       next_container.getElementsByClassName("pricetable")[0].insertAdjacentElement("beforebegin", legs);
-    }
-    const l = container.parentElement.scrollLeft;
-    const r = l + container.parentElement.offsetWidth;
-    if (legs.getBoundingClientRect().left < l) {
-      legs.scrollIntoView({behavior:"smooth", inline:"start"});
-    } else if (legs.getBoundingClientRect().right > r) {
-      legs.scrollIntoView({behavior:"smooth", inline:"end"});
     }
   }
 
@@ -388,14 +339,14 @@
   function shuffleSaveLegs() {
     if (the_legs) {
       selected_legs_pos = [];
-      if (container.parentElement.contains(document.activeElement) && document.activeElement.classList.value.includes("editable")) {
+      if (container.contains(document.activeElement) && document.activeElement.classList.value.includes("editable")) {
         for (let el = document.activeElement, i = 0; i < 3; i++, el = el.parentElement) {
           selected_legs_pos.push(Array.from(el.parentElement.children).indexOf(el));
         }
       }
-      const legs = container.parentElement.getElementsByClassName("legs")[0];
-      if (legs) { container.parentElement.insertAdjacentElement("beforebegin", legs); }
-      else { the_legs.$destroy(); the_legs = null; }
+      let legs = container.getElementsByClassName("legs")[0];
+      if (legs) { container.insertAdjacentElement("beforebegin", legs); }
+      else { the_legs = null; }
       return true;
     }
   }
@@ -405,16 +356,16 @@
    */
   async function unshuffleSaveLegs() {
     await tick();
-    const legs = document.getElementsByClassName("legs")[0];
-    const table = container?.parentElement.querySelector(`table[pt_pg-ref='${the_legs_pg_ref}' i]`);
+    let legs = document.getElementsByClassName("legs")[0];
+    let table = container?.querySelector(`table[pt_pg-ref='${the_legs_pg_ref}' i]`);
     if (!table || !legs) { closeLegs(); return; }
     table.insertAdjacentElement("beforebegin", legs);
     if (selected_legs_pos.length) {
       await tick();
-      const field = legs.children[selected_legs_pos[2]].children[selected_legs_pos[1]].children[selected_legs_pos[0]];
+      let field = legs.children[selected_legs_pos[2]].children[selected_legs_pos[1]].children[selected_legs_pos[0]];
       field.click();
-      const range = document.createRange();
-      const sel = window.getSelection();
+      let range = document.createRange();
+      let sel = window.getSelection();
       range.setStart(field.lastChild, 0);
       range.collapse(true);
       sel.removeAllRanges();
@@ -431,8 +382,6 @@
     the_legs = null;
     resetContainers();
   }
-
-  /* ======================================== HTML Handling Functions ======================================== */
 
   function ptEFPSPSClasses(t) {
     let tenors = $prices[17][0].map(pg => pg.tenor);
@@ -457,7 +406,7 @@
     }
     let bp = cols_blueprint.flat().find(f => f.product_id == p && f.shape == s);
     let refined_tenors = bp?.tenors;
-    let np = bp?.nonpersists ?? true;
+    let np = bp?.nonpersists;
     return (!refined_tenors?.length || refined_tenors.includes(pg.tenor) || !pg.persist && np);
   }
 
@@ -471,9 +420,7 @@
       fut = {tenor: e.detail.tenor, rate: e.detail.rate};
     }
   }
-
 </script>
-
 
 <div
   id={`price-tables-container-${container_index}`}
@@ -490,75 +437,45 @@
         <div
           id={`container-${container_index}_block-${i}`}
           class="col_block"
-          class:secondary-prices={([1, 29].includes($active_product) && price_data.secondary)}
+          class:secondary-prices={($active_product == 1 && price_data.prod == 2) || ($active_product == 29 && price_data.prod == 28)}
           class:efpsps={[17, 27].includes(pgs_arr[0].product_id)}
           class:fwd={products.isFwd(pgs_arr[0].product_id)}
           block_prod-id={price_data.prod ?? price_data.data_array?.[i].prod}
           >
           <!-- STIR -->
           {#if price_data?.stirsps}
-            <PriceTable prod_name={`SPS ${price_data.stirsps}M`} 
-            allNames={allNames} 
-            allShapesPrices={allShapesPrices} 
-            price_list={pgs_arr} 
-            on:selectedProdId={bubbleProdId}/>
+            <PriceTable prod_name={container_index == 2 ? "SPS 6M" : "SPS 3M"}/>
             {#each pgs_arr as price_group, j}
-              {@const isAfterStart = price_data.data_array ? j >= price_data.data_array[i].start : j >= price_data.start}
-              {@const isBeforeOverflow = !price_data.overflow.has || (i < price_data.overflow.block_idx || i == price_data.overflow.block_idx && j < price_data.overflow.table_max + ((price_data.data_array ? price_data.data_array[i].start : price_data.start) || 0))}
-              {#if isAfterStart && isBeforeOverflow}
-                <PriceTable price_group={price_group[0]} 
-                other_classes="broadsps" 
-                on:show_legs={showLegs} 
-                on:showFutRef={openFutRef} 
-                lib={j == pgs_arr.length-1} 
-                on:specificSPS highlight={price_group[1]}
-                  on:mouseenter={e => { hovered_pt = { cells: Array.from(e.target.getElementsByClassName("centralCells")), price_group: price_group[0] }; }} on:lastPrice={() => {formatPriceBlocks();}}
+              <PriceTable price_group={price_group[0]} other_classes="broadsps" on:show_legs={showLegs} on:showFutRef={openFutRef} lib={j == pgs_arr.length-1} on:details={(e) => dispatch('select', e.detail)} highlight={price_group[1]}
+                on:mouseenter={e => { hovered_pt = { cells: Array.from(e.target.getElementsByClassName("centralCells")), price_group: price_group[0] }; }}
                 />
-              {/if}
             {/each}
           {:else if $active_product == 18 || products.isStir(price_data.prod ?? price_data.data_array?.[i].prod)}
-            <PriceTable prod_name={(price_data.prod ?? price_data.data_array?.[i].prod) == 18 ? null : products.name(pgs_arr[0].product_id)} 
-            allShapesPrices={allShapesPrices} 
-            price_list={pgs_arr} 
-            allNames={allNames} 
-            on:selectedProdId={bubbleProdId} 
-            broad_tenor={$active_product == 18 ? broad_tenor : `SPS\u2003${pgs_arr[0].fwd*12}x${pgs_arr[0].fwd*12+pgs_arr[0].years[0]*12}` }/>
+            <PriceTable prod_name={(price_data.prod ?? price_data.data_array?.[i].prod) == 18 ? null : products.name(pgs_arr[0].product_id)} broad_tenor={$active_product == 18 ? broad_tenor : `SPS\u2003${pgs_arr[0].fwd*12}x${pgs_arr[0].fwd*12+pgs_arr[0].years[0]*12}` }/>
             {#each pgs_arr as price_group, j (price_group.tenor)}
               {@const oc = [17,27].includes(pgs_arr[0].product_id) ? ptEFPSPSClasses(price_group.tenor) : (pgs_arr[0].product_id == 18 ? "sps" : "")}
               {@const isAfterStart = price_data.data_array ? j >= price_data.data_array[i].start : j >= price_data.start}
-              {@const isBeforeOverflow = !price_data.overflow.has || (i < price_data.overflow.block_idx || i == price_data.overflow.block_idx && j < price_data.overflow.table_max + ((price_data.data_array ? price_data.data_array[i].start : price_data.start) || 0))}
+              {@const isBeforeOverflow = !price_data.overflow.has || (i < price_data.overflow.block_idx || i == price_data.overflow.block_idx && j < price_data.overflow.idx + ((price_data.data_array ? price_data.data_array[i].start : price_data.start) || 0))}
               {#if blueprintRefineEval(i, price_group) && isAfterStart && isBeforeOverflow}
-                <PriceTable 
-                {price_group} 
-                on:show_legs={showLegs} 
-                on:showFutRef={openFutRef} 
-                on:expand={formatPriceBlocks} 
-                lib={j == pgs_arr.length-1}
+                <PriceTable {price_group} on:show_legs={showLegs} on:showFutRef={openFutRef} on:expand={formatPriceBlocks} lib={j == pgs_arr.length-1} exp={price_group.expanded}
                   specific={price_data.prod == 18} other_classes={oc} broad_tenor={$active_product == 18 ? broad_tenor : `SPS\u2003${pgs_arr[0].fwd*12}x${pgs_arr[0].fwd*12+pgs_arr[0].years[0]*12}`}
                   on:mouseenter={e => { hovered_pt = { cells: Array.from(e.target.getElementsByClassName("centralCells")), price_group: price_group }; }}
-                />
+                  on:details={(e) => dispatch('select', e.detail)}
+                  />
               {/if}
             {/each}
           <!-- ELSE -->
           {:else}
             {#if !price_data.overflow.has || i <= price_data.overflow.block_idx}
-              <PriceTable prod_name={products.name(pgs_arr[0].product_id)} 
-              allShapesPrices={allShapesPrices} 
-              price_list={pgs_arr} 
-              allNames={allNames} 
-              on:selectedProdId={bubbleProdId} />
+              <PriceTable prod_name={products.name(pgs_arr[0].product_id)} />
               {#each pgs_arr as price_group, j (price_group.product_id + price_group.sortCode)}
                 {@const isAfterStart = price_data.data_array ? j >= price_data.data_array[i].start : j >= price_data.start}
-                {@const isBeforeOverflow = !price_data.overflow.has || (i < price_data.overflow.block_idx || i == price_data.overflow.block_idx && j < price_data.overflow.table_max + ((price_data.data_array ? price_data.data_array[i].start : price_data.start) || 0))}
+                {@const isBeforeOverflow = !price_data.overflow.has || (i < price_data.overflow.block_idx || i == price_data.overflow.block_idx && j < price_data.overflow.idx + ((price_data.data_array ? price_data.data_array[i].start : price_data.start) || 0))}
                 {#if blueprintRefineEval(i, price_group) && isAfterStart && isBeforeOverflow}
-                  <PriceTable 
-                  {price_group} 
-                  on:show_legs={showLegs} 
-                  on:showFutRef={openFutRef} 
-                  on:expand={formatPriceBlocks} 
-                  lib={j == pgs_arr.length-1}
+                  <PriceTable {price_group} on:show_legs={showLegs} on:showFutRef={openFutRef} on:expand={formatPriceBlocks} lib={j == pgs_arr.length-1} exp={price_group.expanded}
                     on:mouseenter={e => { hovered_pt = { cells: Array.from(e.target.getElementsByClassName("centralCells")), price_group: price_group }; }} on:lastPrice={(e) => {dispatch("lastColLoaded", {container_index, block_index:i, price_data, table:e.detail.table})}}
-                  />
+                    on:details={(e) => dispatch('select', e.detail)}
+                    />
                 {/if}
               {/each}
             {/if}
@@ -569,7 +486,7 @@
   {/if}
 </div>
 
-<WhiteboardContextMenu 
+<WhiteBoardContextMenu 
   pg={hovered_pt.price_group} 
   cc={hovered_pt.cells} 
   target_cells={ctx_target_cells} 
@@ -581,7 +498,6 @@
 <Tooltip class='futRef' style="left: {futPos.left}px; top: {futPos.top}px;" hideIcon={true} bind:open={showFutRef}>
   {fut.tenor} @ {fut.rate ?? '0.00'}
 </Tooltip>
-
 
 <style>
   .col {
@@ -599,6 +515,7 @@
     background-color: var(--cds-ui-01);
     margin-bottom: 20px;
     &:not(:has(> .pricetable)) {
+      /* check this stuff */
       display: none;
     }
   }

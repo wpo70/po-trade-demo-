@@ -9,7 +9,7 @@
 
 import { writable, get } from 'svelte/store';
 import { getRbaRuns } from '../common/rba_handler';
-import { isTenor, roundToNearest, roundUpToNearest, tenorToYear } from '../common/formatting';
+import { isTenor, tenorToYear } from '../common/formatting';
 import products from './products';
 import prices from './prices';
 import data_collection_settings from './data_collection_settings';
@@ -86,7 +86,6 @@ const quotes = (function () {
         q.mid = quote.mid;
         q.dv01 = quote.dv01;
         if (quote.override != undefined) q.override = quote.override;
-        if (quote.yesterday_close != null) q.yesterday_close = quote.yesterday_close;
         q.mid_is_stale = quote.mid_is_stale;
         q.dv01_is_stale = quote.dv01_is_stale;
       }
@@ -98,20 +97,26 @@ const quotes = (function () {
   // Get the quote object for the given product_id, currency_code and year.
 
   const getQuote = function (product_id, year) {
+    // Normalize product 103 (RBA OIS page) to product 20 (OIS)
+    if (product_id == 103) product_id = 20;
+    
     let store = get(quotes);
     let the_quotes = store[products.nonFwd(product_id)];
-    if (typeof the_quotes === 'undefined') throw new Error('Could not get quote for product_id ' + product_id);
+    if (typeof the_quotes === 'undefined') {
+      console.warn('Could not get quote for product_id ' + product_id);
+      return null;
+    }
 
     let q; 
     try {
       q = the_quotes.find(q => q.year.toFixed(5) === year.toFixed(5));
     } catch (error) {
-      // console.log(error);
+      console.warn(error);
+      return null;
     }
-    try {
-      if (typeof q === 'undefined') throw new Error('Could not get quote for year ' + year + ' of product_id ' + product_id);
-    } catch (error) {
-      // console.log(error);
+    if (typeof q === 'undefined') {
+      console.warn('Could not get quote for year ' + year + ' of product_id ' + product_id);
+      return null;
     }
     return q;
   };
@@ -155,6 +160,7 @@ const quotes = (function () {
     // overridden.
   
     const ovmid = function (q) {
+      if (!q) return 0;
       if (get(data_collection_settings).calcOIS && (product_id == 20 || product_id == 3) && (q.year < 2 || q.year > 1000)) {
         return (q.override === null) ? getOISMid(q.year) : q.override;
       } else {
@@ -171,40 +177,43 @@ const quotes = (function () {
       case 3:
         return 2 * ovmid(qq[1]) - ovmid(qq[0]) - ovmid(qq[2]);
       default:
-        throw new Error('Argument years does not have 1, 2 or 3 elements: "' + years + '"');
+        console.warn('Argument years does not have 1, 2 or 3 elements: "' + years + '"');
+        return 0;
     }
   };
 
   // Return the DV01 for the given year.
 
   const dv01 = function (product_id, year, fwd) {
+    // Normalize product 103 (RBA OIS page) to product 20 (OIS)
+    if (product_id == 103) product_id = 20;
+    
     let dv01;
-    if (product_id == 20 && dv01 == 1 && year > 1000) {
+    if (product_id == 20 && year > 1000) {
+      // RBA OIS uses ACT/360 - DV01 = actual_days / 360
       let rbas = getRbaRuns();
-      let thisMonthDayCount = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
-      let tenorDayCount = rbas[year - 1001][4];
-      if (tenorDayCount < 45) {
-        dv01 = quotes._get_dv01(3, tenorToYear("1m"));
-      } else {
-        thisMonthDayCount += new Date(new Date().getFullYear(), new Date().getMonth() + 2, 0).getDate();
-        dv01 = quotes._get_dv01(3, tenorToYear("2m"));
+      let actualDays = 42; // Default 6 weeks
+      if (rbas && rbas.length > 0 && rbas[year - 1001] && rbas[year - 1001][4]) {
+        actualDays = rbas[year - 1001][4];
       }
-      dv01 = dv01*tenorDayCount/thisMonthDayCount;
+      dv01 = actualDays / 360;
     } else if (products.isFwd(product_id)) {
       if (get(data_collection_settings).gateways.length > 0) {
         dv01 = getFWDDV01(year, fwd);
       } else {
-        dv01 = getQuote(products.nonFwd(product_id), year).dv01;
+        let q = getQuote(products.nonFwd(product_id), year);
+        dv01 = q ? q.dv01 : 1;
       }
     } else {
-      dv01 = getQuote(product_id, year).dv01;
+      let q = getQuote(product_id, year);
+      dv01 = q ? q.dv01 : 1;
     }
     return dv01;
   };
 
   // Return the minimum market parcel for the given tenor.
 
-  const mmp = function (product_id, years, fwd = null) {
+  const mmp = function (product_id, years) {
     // Years may be the years array from an order or price and it may be a
     // scalar.  Outright volumes are at years[0], spread and butterfly volumes
     // are at years[1].
@@ -237,14 +246,14 @@ const quotes = (function () {
 
     let dv01;
     try {
-      dv01 = this.dv01(product_id, y, fwd);
+      dv01 = this.dv01(product_id, y);
     } catch (error) {
-      // console.log(error);
+      console.log(error);
     }
     if (product_id === 5) {
-      return roundUpToNearest((s * 40 * 10 / dv01), 2);
+      return (s * 40 * 10 / dv01);
     } else { 
-      return roundUpToNearest((s * 25 * 10 / dv01), 2);
+      return (s * 25 * 10 / dv01);
     }
   };
 
@@ -255,10 +264,24 @@ const quotes = (function () {
     } else {
       y = years;
     }
-    return getQuote(product_id, y).dv01;
+    let q = getQuote(product_id, y);
+    return q ? q.dv01 : 1;
   };
 
-  const getDV01FromVol = function (product_id, years, vol, fwd = null) {
+  const _modified_mmp = function (product_id, years, dv01) {
+
+    // MMP is 25 ($M) at a dv01 of 10, by convention, for product IRS, EFP, OIS, 3v1, BOB, XCCY
+    // MMP is 40 ($M) at a dv01 of 10, by convention, for product 6v3
+
+    if (products.nonFwd(product_id) === 5) {
+      return (40 * 10 / dv01);
+    } else {
+      return (25 * 10 / dv01);
+    }
+  };
+
+  const getDV01FromVol = function (product_id, years, vol) {
+    let s = 1;
     let year;
     let dv01;
 
@@ -268,14 +291,26 @@ const quotes = (function () {
       year = years[0];
     }
 
-    if (products.isStir(product_id)) {
-      return vol/quotes.mmp(product_id, years, fwd);
+    let q = getQuote(product_id, year);
+    dv01 = q ? q.dv01 : 1;
+    if (product_id == 20 && dv01 == 1 && year > 1000) {
+      let rbas = getRbaRuns();
+      let thisMonthDayCount = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+      let tenorDayCount = rbas[year - 1001] ? rbas[year - 1001][4] : 42;
+      if (tenorDayCount < 45) {
+        dv01 = quotes._get_dv01(3, tenorToYear("1m"));
+      } else {
+        thisMonthDayCount += new Date(new Date().getFullYear(), new Date().getMonth() + 2, 0).getDate();
+        dv01 = quotes._get_dv01(3, tenorToYear("2m"));
+      }
+      dv01 = dv01*tenorDayCount/thisMonthDayCount;
+    } else if (products.isStir(product_id)) {
+      return vol/quotes.mmp(product_id, years);
     }
-    
+
     // MMP is 25 ($M) at a dv01 of 10, by convention, for product IRS, EFP, OIS, 3v1, BOB, XCCY
     // MMP is 40 ($M) at a dv01 of 10, by convention, for product 6v3
-    dv01 = quotes.dv01(product_id, year, fwd);
-    return (dv01 * vol) / 10;
+    return ((dv01 * vol) / (10 * s)).toFixed(2);
   };
 
   const volumeAt = function (product_id, at_year, volume, year) {
@@ -284,7 +319,7 @@ const quotes = (function () {
 
     const dv01 = this.dv01(product_id, year);
     const at_dv01 = this.dv01(product_id, at_year);
-    return roundUpToNearest(volume * dv01 / at_dv01, 2);
+    return volume * dv01 / at_dv01;
   };
 
   const minimumVolume = function (product_id, vola, yeara, volb, yearb) {
@@ -324,6 +359,7 @@ const quotes = (function () {
     minimumVolume,
     getPrevQuote,
     _get_dv01,
+    _modified_mmp,
     getDV01FromVol,
     isQuotedTenor,
     updateFWDMids,

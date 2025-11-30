@@ -4,7 +4,7 @@
     // Components
     import fxrate from '../../stores/fxrate.js';
     import { round, handleReset } from '../../common/formatting';
-    import CustomComboBox from "../Utility/CustomComboBox.svelte";
+    import CustomComboBox from "./../CustomComboBox.svelte";
     
     // Icon
     import Calculator from "carbon-icons-svelte/lib/Calculator.svelte";

@@ -66,10 +66,12 @@ const filters = (
       }
     };
 
-    const isDefault = function (product_id = get(active_product), sel = get(selected_custom_wb)) {    
-      const f = (product_id === -1 && sel.board_id !== -1) ? sel.filters : getFilters(product_id);
-      if (!f && product_id < 90) { console.warn("Filters are undefined for this product. Will always display as being default. Prod ", product_id); return true; }
-      return (product_id === -1 && sel.board_id === -1) 
+    const isDefault = function (product_id = get(active_product), sel = get(selected_custom_wb)) {
+    
+      if (product_id > 0) { return true; }
+      // const f = getFilters(product_id);
+      const f = (product_id === -1 && sel?.board_id !== -1) ? sel?.filters : getFilters(product_id);
+      return (product_id === -1 && sel?.board_id === -1) 
         ? !f.nonfirm && !f.interests && !f.wf_outrights && f.width_filter.value == 0.5
         : f?.nonfirm && f?.interests && !f?.wf;
     };

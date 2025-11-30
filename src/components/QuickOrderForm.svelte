@@ -1,9 +1,8 @@
 <script>
   import { onMount } from 'svelte';
   import OrderForm from './OrderForm/OrderForm.svelte';
-  import DraggableModal from "./Utility/DraggableModal.svelte";
-  
-  import active_product, { view } from '../stores/active_product';
+  import active_product from '../stores/active_product';
+  import DraggableModal from "./DraggableModal.svelte";
   
   export let selected = null; 
     
@@ -20,9 +19,9 @@
     },
   };
 
-  $: close($active_product, $view);
+  $: closeform($active_product);
 
-  function close() {
+  function closeform () {
     show_form = false;
   }
 
@@ -32,6 +31,7 @@
   <DraggableModal
     bind:open={show_form}
     heading = {`Order Form`}
+    is_editable = true
     >
     <svelte:fragment slot="body">
       <div id="quick-order-content" bind:this={qoc_div}>

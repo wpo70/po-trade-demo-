@@ -1,11 +1,12 @@
 <script>
   // icon
+import CaretLeft from "carbon-icons-svelte/lib/CaretLeft.svelte";
+import CaretRight from "carbon-icons-svelte/lib/CaretRight.svelte";
 import Calculator from "carbon-icons-svelte/lib/Calculator.svelte";
 import Reset from "carbon-icons-svelte/lib/Reset.svelte";
 
 import { DatePicker, DatePickerInput } from 'carbon-components-svelte';
 import { CopyButton } from "carbon-components-svelte";
-import OptionCycler from "../Utility/OptionCycler.svelte";
 
 import brokerages from '../../stores/brokerages.js';
 import quotes from '../../stores/quotes.js';
@@ -126,6 +127,8 @@ function handleBroCal () {
   }
 }
 
+
+
 let bro_type=[
     {"id":"d", "name": "aud daily"},
     {"id":"w", "name": "aud weekly"},
@@ -133,6 +136,11 @@ let bro_type=[
     {"id": "b", "name": "aud semi-semi"},
     {"id": "a", "name": "aud annually"},
     {"id": "fra", "name": "fra bro calculator (aud)"}
+]
+let trade_type=[
+  "OUT RIGHT",
+  "SPREAD",
+  "BUTTERFLY"
 ]
 
 function handleDaysRange (range) {
@@ -143,21 +151,19 @@ function handleDaysRange (range) {
   }
 }
 </script>
-
-
 <div style="height: 100%; ">
   <div style="display: flex; flex-direction: column; gap:10px; margin-bottom: var(--cds-spacing-05);  width:400px; background-color:#121212;">
     <div style="padding: 15px;" >
       <div class="cal-title-body">Brokerage Calculator</div>
       <div class="title-border" style="margin-bottom: 10px;"></div>
       <div style="padding: var(--cds-spacing-05);  border-radius:10px; background-color: #232323;">
-        <OptionCycler 
-          size="sm"
-          style="background-color:#121212; border-radius:4px; height:2.5rem; padding:0 5px; margin-bottom:0.75rem;"
-          bind:option_list={bro_type}
-          bind:index={brotype}
-          textFormatter={(val) => val.name.toUpperCase()}
-        />
+        <div class="item-cal non-custombox">
+          <div class="input-cal 100-w" style="margin-left: 0px; margin-right: 0px; width:100%;">
+            <button style="border: none;padding:0;self-align: center;" on:click={() => {if (brotype>0) brotype -=1; }}><CaretLeft size={20}/></button >
+              <input style="font-style: bold; transition: .2s ease-in-out; width: 85%; text-align: center;" value={bro_type[brotype].name.toUpperCase()}/>
+            <button style="border: none;padding:0; self-align:center;" on:click={() => {if (brotype<5) brotype +=1; }}><CaretRight size={20}/></button>
+          </div>
+        </div>
         <div class="item-cal non-custombox">
             <label>Notional (M)</label>
             <div class="input-cal">

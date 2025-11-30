@@ -26,33 +26,25 @@
   $: tr(false, $trade_reviews);
   onMount(() => { tr(true); });
   function tr(first) {
-    if (!$trade_reviews[0]) { reviewRequest = false; return; }
-    for (let i = 0, rev = $trade_reviews[i]; i < $trade_reviews.length; rev = $trade_reviews[++i]) {
-      if (!rev.acknowledged && trade_reviews.validate(rev) && (first || rev.initiated_by != user.get() && !rev.reviewed_by.length)) {
-        doRev(rev);
-        break;
+    trade_review = $trade_reviews[0];
+    if (!trade_review) { reviewRequest = false; }
+    if (trade_reviews.validate(trade_review) && (first || trade_review.initiated_by != user.get() && !trade_review.reviewed_by.length)) {
+      reviewRequest = true;
+      if (document.visibilityState == "hidden") {
+        Notification.requestPermission().then(perm => {
+          if (perm == 'granted') {
+            const notification = new Notification("Trade Review", {
+              body: brokers.name(trade_review.initiated_by) + " has requested you to review a trade",
+              requireInteraction: true
+            });
+            notification.addEventListener("click", () => window.focus());
+          }
+        });
       }
     }
   }
 
-  function doRev(rev) {
-    trade_review = rev;
-    reviewRequest = true;
-    if (document.visibilityState == "hidden") {
-      Notification.requestPermission().then(perm => {
-        if (perm == 'granted') {
-          const notification = new Notification("Trade Review", {
-            body: brokers.name(trade_review.initiated_by) + " has requested you to review a trade",
-            requireInteraction: true
-          });
-          notification.addEventListener("click", () => window.focus());
-        }
-      });
-    }
-  }
-
   function handleTradeReview () {
-    trade_review.acknowledged = true;
     let pid = orders.get(trade_review.orders[0]).product_id;
     dispatch("viewTR", {pid});
     reviewRequest = false;
@@ -80,7 +72,7 @@
     <div style="grid-area:buttons;" on:click|stopPropagation>
       <ButtonSet style="justify-content:center;">
         <Button icon={Launch} on:click={handleTradeReview}>View Trade</Button>
-        <Button kind="secondary" on:click={() => {reviewRequest = false; trade_review.acknowledged = true;}}>Dismiss</Button>
+        <Button kind="secondary" on:click={() => {reviewRequest = false;}}>Dismiss</Button>
       </ButtonSet>
     </div>
   </div>

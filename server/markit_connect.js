@@ -38,6 +38,7 @@ module.exports.markit_connect = async function (req, res) {
     is_markit: true,
     is_markit_active: false,
     blp_connected: false,
+    sheet_connected: false
   });
 
   res.set('Content-Type', 'application/json');

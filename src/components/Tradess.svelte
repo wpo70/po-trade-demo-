@@ -6,9 +6,17 @@ import tradess from '../stores/tradess.js';
 import products from '../stores/products.js';
 import active_product from '../stores/active_product.js';
 
+import { createEventDispatcher } from 'svelte';
+
 let tradss;
 export let leftover_bool;
 export let leftover_err_message;
+
+import Toasts from './Toasts.svelte';
+import { toasts } from '../stores/toast';
+import currency_state from '../stores/currency_state';
+
+const dispatch = createEventDispatcher();
 
 $: {
   if ($active_product===1) {
@@ -27,20 +35,19 @@ $: {
   }
 }
 </script>
-
-
 <div class="trades_wrapper">
 {#key $active_product}
   {#if tradss && tradss.length > 0}
     {#each tradss as trades (trades.timestamp)}
-      <Trades {trades} total_ts={tradss.length} bind:leftover_bool={leftover_bool} bind:leftover_err_message={leftover_err_message}/>
+      <Trades {trades} bind:leftover_bool={leftover_bool} bind:leftover_err_message={leftover_err_message}/>
     {/each}
   {:else}
     <h3 style="padding-left: 10px">There are no {products.name($active_product) == "IRS" && $active_product == 1 ? "IRS or EFP" : products.name($active_product)} trades in negotiation</h3>
   {/if}
 {/key}
 </div>
-
+<!-- Add toast on editable leg once Price or volume input isn't correct -->
+   {#if $toasts }<div class="toast"><Toasts /></div>{/if}
 
 <style>
 .trades_wrapper {
@@ -55,5 +62,10 @@ $: {
   align-content: flex-start;
   position: relative;
   overflow-x: auto;
+}
+.toast {
+  margin-left: auto;
+  z-index: 100;
+  position: relative;
 }
 </style>

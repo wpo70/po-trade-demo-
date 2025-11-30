@@ -1,6 +1,7 @@
 <script>
 import { addDays, addMonths, bidToString, getEFPSPS_Dates, removeTrailZero, round, timestampToISODate, toEFPSPSTenor, toRBATenor, toTenor, toVolumeString } from '../common/formatting.js';
-import { createEventDispatcher, onMount } from 'svelte';
+import { createEventDispatcher } from 'svelte';
+import { flyPrice, spreadPrice } from '../common/calculations';
 import { calc3mSps, calc6mSps } from '../common/pricing_models';
 import { addToast } from '../stores/toast';
 import websocket from '../common/websocket.js';
@@ -11,19 +12,10 @@ import products from '../stores/products';
 import quotes from '../stores/quotes';
 import ticker from '../stores/ticker';
 import user from '../stores/user';
-import { roundToNearest } from '../common/formatting.js';
-import { RadioButton, RadioButtonGroup } from 'carbon-components-svelte';
-import currency_state from '../stores/currency_state.js';
-import active_product from '../stores/active_product.js';
-import dailyfx from '../stores/fxrate.js';
 
 const dispatch = createEventDispatcher();
 
-export let open_dv = true;
 export let order;
-
-let fx, fxrate;
-let selected_currency = products.currency(order.product_id);
 
 // $: permission = user.getPermission($brokers); // this results in permission equals undefined. Not sure why, but the code below fixes the issue.
 // TODO: Above
@@ -40,15 +32,6 @@ if (traders.name(order.trader_id).split(" ")[0] == "Trader"){
 }
 
 $: order_is_old = new Date(order.time_placed) < new Date().setHours(0, 0, 0, 0);
-
-$: {
-  fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state);
-  if (fx) fxrate = fx.override ? fx.override : fx.value;
-}; 
-
-onMount(() => {
-  getDV01(order);
-});
 
 function overridePrice(event) {
   let ovr = event.srcElement.innerText;
@@ -123,7 +106,7 @@ function handlePriceOverride(text) {
   }
   updated_order.reference = round(updated_order.reference, 7);
   addToast ({
-      message: "Successfully updated order.",
+      message: "Successfully update order.",
       type: "success",
       dismissible: true,
       timeout: 1500,
@@ -164,7 +147,6 @@ function overrideVol(event) {
 
 function handleVolOverride(text) {
   // ignore non-numerical entries
-  if(!text) return;
 
   let ovr = parseFloat(text);
   let old_vol = toVolumeString(order.volume);
@@ -189,7 +171,7 @@ function handleVolOverride(text) {
     let date = new Date(updated_order.start_date);
     updated_order.start_date = timestampToISODate(date);
   }
-  dispatch("updatedVol", {vol:ovr, open_dv});
+  dispatch("updatedVol", {vol:ovr});
   addToast ({
       message:"Successfully update order.",
       type: "success",
@@ -204,21 +186,21 @@ function handleVolOverride(text) {
 // is being intercepted by the indicators drawer which cause it to close.  So the ESC
 // key is not implemented yet.
 
-function handleVolKeyPress(event, is_dv01) {
+function handleVolKeyPress(event) {
   // Enter, Up Arrow, and Down Arrow are keyCodes 13, 38, and 40
   if (event.keyCode === 13) {
     event.target.innerText = handleVolOverride(event.srcElement.innerText);
     editCell(event, false);
     event.preventDefault();
-  } else if (event.keyCode === 38 && !is_dv01){
+  } else if (event.keyCode === 38){
     event.target.innerText = handleVolOverride(order.volume + 25);
     event.preventDefault();
-  } else if (event.keyCode === 40 && !is_dv01){
+  } else if (event.keyCode === 40){
     if (order.volume > 25){
       event.target.innerText = handleVolOverride(order.volume - 25);
       event.preventDefault();
     }
-  } else if (event.keyCode == 27 && !is_dv01){
+  } else if (event.keyCode == 27){
     event.target.innerText = toVolumeString(order.volume);
     editCell(event, false);
     event.preventDefault();
@@ -231,43 +213,7 @@ function editCell(event, edit) {
   let el = event.srcElement;
   editing = edit;
   if (editing) { el.focus(); }
-  else { dispatch("editableUpdated", {open_dv}); }
-}
-
-let open_dv01, volume_mmp, dv01;
-$: handleDV01(dv01); //Update volume when the Dv01 field changes
-
-function getDV01(order) {
-  dv01 = quotes.getDV01FromVol(order.product_id, order.years, order.volume, order?.fwd)
-  if(order.currency_code !== selected_currency){
-    dv01 = dv01 * fxrate;
-  }
-  dv01 = roundToNearest(dv01, 2).toString();
-  return dv01;
-}
-
-
-function handleDV01() {
-  let s;
-  let pid = products.nonFwd(order.product_id);
-  let dv_ = roundToNearest(dv01, 2).toString();
-  
-  if (pid === 5 || pid === 13 ) {
-    s = 40;
-  } else {
-    s = 25;
-  }
-  if (order.years?.length == 3) s *= 2;
-  if (order.currency_code == 'USD') {s = s*fxrate;}
-
-  if (products.isStir(order.product_id)) {
-    volume_mmp = quotes.mmp(order.product_id, order.years, order?.fwd) * dv_; 
-  } else if (dv_) {
-    volume_mmp = quotes.mmp(order.product_id, order.years, order?.fwd) * dv_ / s;
-  } else {
-    volume_mmp = quotes.mmp(order.product_id, order.years, order?.fwd); 
-  }
-  volume_mmp = roundToNearest(volume_mmp, 2);
+  else { dispatch("editableUpdated"); }
 }
 
 </script>
@@ -293,7 +239,7 @@ function handleDV01() {
       class="editable" 
       contenteditable={editing}
       tabindex="0"
-      on:click={(e) => {if (e) {open_dv = true; editCell(e, true); }}}
+      on:click={(e) => {if (e) { editCell(e, true); }}}
       on:blur={(e) => {if (editing) {overridePrice(e); editing = false}}}
       on:keydown={handlePriceKeyPress}  
     >
@@ -304,7 +250,7 @@ function handleDV01() {
         class="editable"
         contenteditable={editing}
         tabindex="0"
-        on:click={(e) => {open_dv = true; if (e) { editCell(e, true); }}}
+        on:click={(e) => {if (e) { editCell(e, true); }}}
         on:blur={(e) => {if (editing) {overrideVol(e); editing = false}}}
         on:keydown={handleVolKeyPress}
       >
@@ -322,25 +268,12 @@ function handleDV01() {
     {/if}
   {/if}
   {#if order.volume != 0 && !order.eoi}
-    {order.isBelowMMP() ? '⚠️' : ''} 
+    {order.isBelowMMP() ? '⚠️' : ''}
   {/if}
   {order_is_old ? '❄️' : order.firm ? '' : '⛔'}
   {traders.bankName(order.trader_id)}
   {lastname}
 </div>
-{#if open_dv && $active_product !== 18}
-  <div class="dv01-changer" on:keypress|stopPropagation>
-    <span>Dv01</span>
-    <input on:keydown={(e) => handleVolKeyPress(e, true)} bind:value={dv01} on:change={(e) => {handleVolOverride(volume_mmp); editCell(e, false);}} 
-    style="margin-bottom: 2px;width:60px;background-color: rgba(0, 0, 0, 0);color: #f4f4f4;border: 1px solid gray" class="editable"/>
-    {#if selected_currency !== 'USD'}
-      <RadioButtonGroup>
-        <RadioButton labelText={selected_currency} value={selected_currency} checked={order.currency_code == selected_currency} on:change={() => {order.currency_code = selected_currency, getDV01(order)}}/>
-        <RadioButton labelText="USD" value={'USD'} on:change={() => {order.currency_code = 'USD', getDV01(order)}} checked={order.currency_code !== selected_currency}/>
-      </RadioButtonGroup>
-    {/if}
-  </div>
-{/if}
 
 <style>
 .editable {
@@ -362,24 +295,4 @@ function handleDV01() {
   white-space: nowrap;
   text-align: center;
 }
-
-.dv01-changer {
-  display: flex;
-  flex-direction: row;
-  padding: 5px 10px;
-  justify-content: center;
-  align-items: center;
-  gap:20px;
-  height: 32px;
-}
-
-:global(.dv01-changer .bx--radio-button-group) {
-  margin-top: 0px !important;
-}
-
-:global(.dv01-changer .bx--form-item) {
-  flex: 0 1 auto !important;
-}
-
-
 </style>

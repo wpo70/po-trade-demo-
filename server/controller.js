@@ -1,12 +1,12 @@
 'use strict';
 
-const { overrideQuote, setCalcIRS_quotes, getPriceHistory, setLinearInterp } = require('./db/quotes.js');
+const { overrideQuote, setCalcIRS_quotes, getPriceHistory } = require('./db/quotes.js');
 const { insertSwaptionQuotes } = require('./db/swaption_quotes.js');
 const { insertSwaptionOrder, refreshSwaptionOrders, getAllSwaptionCounts } = require('./db/swaption_orders.js');
 const { refreshLiquidityTrades, getAllLiquidityCounts } = require ('./db/liquidity_trades.js');
 const { insertOrders, updateOrders, deleteOrders } = require('./db/orders.js');
 const { initialData } = require('./db/initial_data.js');
-const { sendToAllClients, sendToOneClient, sendToGateway, sendToMarkit, sendToSpecificGateway } = require('./send.js');
+const { sendToAllClients, sendToOneClient, sendToGateway, start, sendToMarkit, sendToSpecificGateway } = require('./send.js');
 const { sendToOneview } = require('./ov_api.js');
 const { insertTickets, refreshTrades, tradeCount, tradesThisMonth, getAllTradeCounts} = require('./db/trades.js');
 const { updateBrokerages } = require('./db/brokerages.js');
@@ -20,24 +20,23 @@ const { insertSwaptionLiveOrders, updateSwaptionLiveOrders, deleteSwaptionLiveOr
 const { addSwaptionStructure, deleteSwaptionStructures, updateSwaptionStructures } = require('./db/swaption_market_structures.js');
 const { insertTradeReviews, updateTradeReviews, deleteTradeReviews } = require('./db/trade_reviews.js');
 const { getNotifications, sendNotifications, deleteNotification } = require('./db/notifications.js');
-const { getBrokerPreferences, updateBrokerPreferences, updateCalcIRSPreference, updateInterpPreference, updateCalcOISPreference, getGeneralPreferences } = require('./db/preferences.js');
+const { getBrokerPreferences, updateBrokerPreferences, updateCalcIRSPreference, getGeneralPreferences: getCalcPreferences, updateCalcOISPreference } = require('./db/preferences.js');
 const { overrideFX } = require('./db/fxrate.js');
 const { getSpecificSecurities, setCalcIRS_controller, getSecurities } = require('./gw_controller.js');
 const { insertConfos, deleteConfos, updateConfosMW } = require('./db/confos.js');
 const { addNewCustomWB, updateCustomWB, deleteCustomWB, swapCustomWBs } = require('./db/custom_whiteboards.js');
 const config = require('../config.json');
 
-
 module.exports.messageReceived = async function (message, sess) {
   // Parse the JSON message.
   // Prepare a message to send to all of the clients.
+  
   const msg = JSON.parse(message);
   var client_message = {};
   var got_message = false;
 
   if (msg.hasOwnProperty('ping')) {
     got_message = true;
-    sendToOneClient(sess.socket, {"pong" : 0});
   } else {
     logger.info(`message received from broker ${sess.broker_id}: ${message}`);
   }
@@ -50,13 +49,14 @@ module.exports.messageReceived = async function (message, sess) {
   if (msg.hasOwnProperty('initialize_me')) {
     got_message = true;
     client_message = await initialData(sess.broker_id); // get the initial data from the database
+    
     let gateways = [];
     sessions.forEach((sess) => {if (sess.is_gateway) gateways.push(sess)});
     client_message.init_gateways = gateways;
-    let calcPrefs = await getGeneralPreferences();
+
+    let calcPrefs = await getCalcPreferences();
     client_message.calcIRS = calcPrefs.calcIRS;
     client_message.calcOIS = calcPrefs.calcOIS;
-    client_message.interpChoice = calcPrefs.interpChoice;
     
     // Send markitwire connection to client
     client_message.init_markitwire = activeMarkit('userId') ? true : false;
@@ -64,12 +64,12 @@ module.exports.messageReceived = async function (message, sess) {
     client_message.init_markitwire_env = config.env;
   
     sendToOneClient(sess.socket, client_message);
+
     getSecurities("bbsw init");
     getSecurities("rbacor init");
     getSecurities("main");
     getSecurities("fut");
     getSecurities("fx");
-    getSecurities("eod");
     return;
   }
 
@@ -164,6 +164,7 @@ module.exports.messageReceived = async function (message, sess) {
 
   if (msg.hasOwnProperty('get_quotes')) {
     got_message = true;
+    start();
     sendToGateway({ get_quotes: msg.get_quotes });
   }
 
@@ -467,14 +468,6 @@ module.exports.messageReceived = async function (message, sess) {
     client_message.setCalcIRS = bool;
   }
 
-  if(msg.hasOwnProperty('setStraightInterp')){
-    got_message = true;
-    let bool = msg.setStraightInterp;
-    updateInterpPreference(bool);
-    setLinearInterp(bool);
-    client_message.setInterpChoice = bool;
-  }
-
   if(msg.hasOwnProperty('setCalcOIS')){
     got_message = true;
     let bool = msg.setCalcOIS;
@@ -483,8 +476,13 @@ module.exports.messageReceived = async function (message, sess) {
   }
 
   if(msg.hasOwnProperty('disconnectGateway')){
-    got_message = true; 
+    got_message = true;
     sendToSpecificGateway(msg.disconnectGateway, {disconnect: true});
+  }
+
+  if(msg.hasOwnProperty('disconnectGatewaySheet')){
+    got_message = true;
+    sendToSpecificGateway(msg.disconnectGatewaySheet, {sheet_connect: false});
   }
 
   if(msg.hasOwnProperty('requestPriceHistory')){

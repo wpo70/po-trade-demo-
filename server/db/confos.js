@@ -1,63 +1,28 @@
 'use strict';
 
 const { query, makeQueryArrays } = require('.');
-const { activeGateway } = require('../map');
-const { sendToAllClients } = require('../send');
 const { logger } = require('../utils/logger.js');
 
-const refreshIntervals = new Map();
-
-/** Start interval to refresh the MW ids in the confo every 9 seconds, stopping automatically when all ids are found  */
-function autoRefreshInterval(confo_id) {
-  function needsRefreshing(confos) {
-    for (let confo of confos) {
-      const ids_str = confo.split("MW:")[1];
-      if (ids_str.includes("NA")) { return true; }
-    }
-    return false;
-  }
-
-  if (!activeGateway('userId')) { return; }
-
-  const interval = setInterval(async (id) => {
-    let result = await updateConfosMW(id);
-    sendToAllClients({refresh_confos: result});
-    if (!needsRefreshing(Object.values(result.confos))) {
-      clearInterval(refreshIntervals.get(id));
-    }
-  }, 9000, confo_id);
-
-  refreshIntervals.set(confo_id, interval);
-}
-
-module.exports.updateConfosMW = updateConfosMW;
-async function updateConfosMW(id) {
+module.exports.updateConfosMW = async function (id) {
   let result = await query(`call update_confo_mw_values(${id})`);
   return JSON.parse(result.rows[0].update_result);
 }
 
-module.exports.getAllConfos = async function () {
-  let results = (await query('SELECT * FROM confos ORDER BY confo_id DESC')).rows;
-  let deletes = [];
-  let now = new Date().getDate();
-  results = results.filter(c => {
-    if (new Date(c.time_submitted).getDate() >= now) { return true; }
-    deletes.push(c.confo_id);
-  });
-  if (deletes.length) {
-    let delete_confos = await deleteConfos(deletes);
-    sendToAllClients({delete_confos});
-  }
-  return results;
-}
-
 module.exports.insertConfos = async function (confo) {
-  let ids = (await query(
-      "Select trade_id from "
-      + "unnest($1::TEXT[]) WITH ORDINALITY AS t(ov_id, idx) "
-      + "LEFT JOIN trades on trades.trade_id_ov = ov_id "
-      + "ORDER BY idx", [confo.trade_ids])
-    ).rows;
+  let ids = (await query("SELECT trade_id, markit_id from trades where trade_id_ov = ANY($1)", [confo.trade_ids])).rows;
+  
+  let markit_ids = ids.map(r => r.markit_id ?? "NA");
+  let start = new Date().getTime();
+  while (markit_ids.some((id) => id == null || id == "NA") && (new Date().getTime() - start) < 2000) {
+    markit_ids = (
+      await query("Select markit_id from trades where trade_id_ov = ANY($1)", [confo.trade_ids])
+    ).rows.map(r => r.markit_id ?? "NA");
+    await new Promise(res => setTimeout(res, 250));
+  }
+
+  for (let id in confo.confos) {
+    confo.confos[id] += `\n\nMW: ${markit_ids.join(", ")}`;
+  }
     
   confo.trade_ids = ids.map(r => r.trade_id);
   let rows = [];
@@ -84,7 +49,6 @@ module.exports.insertConfos = async function (confo) {
   try {
       const pg_result = await query(qs, a);
       rows = pg_result.rows;
-      autoRefreshInterval(rows[0].confo_id);
   } catch (err) {
       logger.error(err.message);
       logger.error('Query: %s', qs);
@@ -93,8 +57,8 @@ module.exports.insertConfos = async function (confo) {
   return rows;
 };
 
-module.exports.deleteConfos = deleteConfos;
-async function deleteConfos(confo_ids) {
+module.exports.deleteConfos = async function (confo_ids) {
+
   let pg_result;
   try {
     pg_result = await query('DELETE FROM confos WHERE confo_id = ANY($1) returning *', [confo_ids]);

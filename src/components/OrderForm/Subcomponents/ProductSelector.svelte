@@ -37,7 +37,7 @@
       p ? fields.price.set(p, (+p).toFixed(5)) : fields.price.reset();
     }
     if (selected == null) dispatch("setDefaultDv01");
-    dispatch("tenorSet", true);
+    dispatch("tenorSet");
     fields.tenor.setProd(fields.product);
     fields.tenor.invalid = false;
   }

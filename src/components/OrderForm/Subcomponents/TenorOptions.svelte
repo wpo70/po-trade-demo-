@@ -1,13 +1,13 @@
 
 <script>
   import { Button, DatePicker, DatePickerInput, Dropdown, RadioButton, RadioButtonGroup, TextInput } from "carbon-components-svelte";
-  import { addDays, addTenorToDate, convertDateToString, getEFPSPS_Dates, isTenor, roundUpToNearest, tenorToYear, toEFPSPSTenor, toRBATenor } from "../../../common/formatting";
+  import { addDays, addTenorToDate, convertDateToString, getEFPSPS_Dates, isTenor, round, tenorToYear, toEFPSPSTenor, toRBATenor, toTenor } from "../../../common/formatting";
   import { createEventDispatcher } from "svelte";
   import quotes from "../../../stores/quotes";
   import currency_state from "../../../stores/currency_state";
   import dailyfx from "../../../stores/fxrate";
   import products from "../../../stores/products";
-  import CustomComboBox from "../../Utility/CustomComboBox.svelte";
+  import CustomComboBox from "../../CustomComboBox.svelte";
   
   export let fields;
   export let rbaTenors;
@@ -20,7 +20,7 @@
   let efpTenorId = efpTenors.findIndex(t => convertDateToString(t.date) == fields.start.str);
   let tenors1, tenors2;
   $: {
-    if (fields.product == 20) {
+    if (fields.product == 20 || fields.product == 103) {
       let index1 = fields.rba.rbaLeg1Index;
       let index2 = fields.rba.rbaLeg2Index;
       tenors1 = rbaTenors.filter(t => ((index2 == -1 || index2 == null) ? rbaTenors.length : fields.rba.rbaLeg2Index) > t.id);
@@ -31,12 +31,12 @@
   }
 
   $: {
-    fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state);
-    fxrate = fx?.override ? fx?.override : fx?.value ?? 1;
+    fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state.currency);
+    if (fx) fxrate = fx.override ? fx.override : fx.value;
   }; 
 
   function changeTenor (e) {
-    if (fields.product == 20) {
+    if (fields.product == 20 || fields.product == 103) {
       let str = (1001 + fields.rba.rbaLeg1Index).toString();
       if (fields.rba.rbaLeg2Index >= 0 && fields.rba.secondLeg) {
         if (fields.rba.rbaLeg2Index <= fields.rba.rbaLeg1Index) fields.rba.rbaLeg2Index = fields.rba.rbaLeg1Index + 1;
@@ -75,32 +75,65 @@
       }
     }
     dispatch("setDefaultDv01");
-    tenorSet(fields, true);
+    tenorSet(fields);
   }
 
-  export function tenorSet (_fields = fields, useDv01 = false) {
-    fields.dv01.hasPriority = useDv01;
+  export function tenorSet (fields) {
+    // For RBA OIS, use simple ACT/360 calculation
+    if (fields.product == 20 || fields.product == 103) {
+      if (fields.rba.rbaLeg1Index < 0) return;
+      
+      let dv01 = getDv01();
+      if (!dv01 || dv01 <= 0) dv01 = 42 / 360; // Fallback
+      
+      let multiplier = parseFloat(fields.dv01.str) || 25;
+      // Volume = (multiplier * 10) / dv01
+      let volume = (multiplier * 10) / dv01;
+      fields.volume.str = round(volume * 2, 0) / 2;
+      fields.volume.value = fields.volume.str;
+      return;
+    }
+    
+    let dv01 = getDv01();
     let s;
-    let pid = products.nonFwd(_fields.product);
+    let pid = products.nonFwd(fields.product);
     if (pid === 5 || pid === 13 ) {
       s = 40;
     } else {
       s = 25;
     }
-    if (_fields.tenor.value?.length == 3) s *= 2;
-
     let volume_mmp;
-    let multiplier = _fields.dv01.value;
-    if (products.isStir(_fields.product)) {
-      volume_mmp = quotes.mmp(_fields.product, _fields.tenor.value, _fields?.fwd?.value) * multiplier; 
-    } else if (useDv01 && multiplier) {
-      volume_mmp = quotes.mmp(_fields.product, _fields.tenor.value, _fields?.fwd?.value) * multiplier / s;
+    let multiplier = fields.dv01.str;
+    if (fields.dv01_Currency == 'USD') {s = s*fxrate;}
+    if (products.isStir(fields.product)) {
+      volume_mmp = quotes.mmp(fields.product, fields.tenor.value) * multiplier; 
+    } else if ( multiplier) {
+      volume_mmp = quotes._modified_mmp(fields.product, fields.tenor.value, dv01) * multiplier/s;
     } else {
-      volume_mmp = !isNaN(parseFloat(fields?.volume?.value)) ? fields?.volume?.value : quotes.mmp(_fields.product, _fields.tenor.value, _fields?.fwd?.value); 
+      volume_mmp = quotes.mmp(fields.product, fields.tenor.value) * multiplier/s; 
     }
-    if (fields.dv01_Currency != $currency_state) volume_mmp = volume_mmp / fxrate;
-    _fields.volume.set(roundUpToNearest(volume_mmp, 2), roundUpToNearest(volume_mmp, 2));
-    fields = _fields;
+    fields.volume.str = round(volume_mmp*2, 0)/2;
+  }
+  
+  function getDv01(){
+    let dv01;
+    try {
+      if (fields.product == 20 || fields.product == 103) {
+        let year = 1001 + (fields.rba.rbaLeg2Index >= 0 ? fields.rba.rbaLeg2Index : fields.rba.rbaLeg1Index);
+        if (year > 1000) dv01 = quotes.dv01(20, year);
+      } else if (products.isFwd(fields.product)) {
+        if (fields.tenor.value) dv01 = quotes.dv01(fields.product, fields.tenor.value[0], tenorToYear(fields.fwd.str)[0]);
+        if (!dv01) { fields.tenor.invalid = true; fields.tenor.error_message = `this tenor is not available in ${products.name(fields.product)}.`; }
+      } else {
+        if (fields.tenor.value) dv01 = quotes._get_dv01(fields.product, fields.tenor.value);
+        if (!dv01) { fields.tenor.invalid = true; fields.tenor.error_message = `this tenor is not available in ${products.name(fields.product)}.`; }
+      }
+      return dv01;
+    }catch (e) {
+      // dv01Error=`this tenor is not available in ${fields.product}.`;
+      // console.log(e);
+      return;
+    }
   }
 
   function setStartDate () {
@@ -116,7 +149,7 @@
   } 
 </script>
 
-{#if fields.product == 20}
+{#if fields.product == 20 || fields.product == 103}
   <div class="container">
     {#if fields.opposingOrder}
       <TextInput 
@@ -213,7 +246,7 @@
   </div>
   
   <div class="container" style="height: 66px;">
-    <div style="width: 50%; margin-top: -2px;">
+    <div style="width: 50%">
       <!-- TENOR -->
       {#if fields.product == 18 && !fields.opposingOrder}
         <Dropdown 
@@ -277,7 +310,6 @@
         bind:value={fields.fwd.str}
         bind:dirty={fields.fwd.dirty}
         bind:invalid={fields.fwd.invalid}
-        on:input={() => {fields.fwd.value = tenorToYear(fields.fwd.str)[0]; tenorSet(fields, true);}}
         labelText="Fwd"
         invalidText={fields.fwd.error_message}
         readonly={fields.opposingOrder} 

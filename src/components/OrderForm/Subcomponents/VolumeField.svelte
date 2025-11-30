@@ -1,7 +1,7 @@
 <script>
   import { createEventDispatcher } from "svelte";
   import { TextInput, Tooltip } from "carbon-components-svelte";
-  import { round, roundToNearest, roundUpToNearest, toTenor, toVolume } from "../../../common/formatting";
+  import { round, toTenor, toVolume } from "../../../common/formatting";
   import ExpandCategories from "carbon-icons-svelte/lib/ExpandCategories.svelte";
   import products from "../../../stores/products";
   import quotes from "../../../stores/quotes";
@@ -19,29 +19,41 @@
   let fx, fxrate;
 
   $: {
-    fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state);
+    fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state.currency);
     if (fx) fxrate = fx.override ? fx.override : fx.value;
   }; 
 
   function volumeArray () {
     document.activeElement.blur();
     volarr = [];
+    let s;
     fields.tenor.dirty = true;
     fields.tenor.invalid = fields.tenor.isInvalid(Validator.scanTenor);
     if (fields.tenor.invalid) {
       return vol_breakdown_error = "Please enter a valid tenor.";
     }
+    if (fields.product === 5 || fields.product === 13 ) {
+      s = 40;
+    } else {
+      s = 25;
+    }
+    if (fields.dv01_Currency == 'USD') {s = s*fxrate;}
+    let multiplier = fields.dv01.str;
+    
     let years = fields.tenor.value;
-    let mainVol = fields.volume.str;
+    let mainVol;
     switch (years.length){
       case 1:
+        mainVol = toVolume(quotes.mmp(fields.product, years) * multiplier/s);
         volarr.push(mainVol);
         break;
       case 2:
+        mainVol = toVolume(quotes.mmp(fields.product, years) * multiplier/s);
         volarr.push(spreadVol(fields.product, years[1], years[0], mainVol));
         volarr.push(mainVol);
         break;
       case 3:
+        mainVol = toVolume((quotes.mmp(fields.product, years) * multiplier/s)/2);
         volarr.push(flyWingVolFromBody(fields.product, years[1], years[0], mainVol));
         volarr.push(mainVol);
         volarr.push(flyWingVolFromBody(fields.product, years[1], years[2], mainVol));
@@ -51,22 +63,20 @@
   }
 
   function handleVolChange (e) {
-    fields.volume.set(parseFloat(e.detail), e.detail);
+    fields.volume.str = e.detail;
     if (e.detail == '' || !fields.tenor.str) {
       dispatch("setDefaultDv01");
       return;
     }
+    let vol = parseFloat(e.detail);
     if (fields.dv01_Currency == 'USD') vol = (vol * fxrate);
-    let dv01 = quotes.getDV01FromVol(fields.product, fields.tenor.value, fields.volume.value, fields?.fwd?.value);
-    fields.dv01.set(dv01, roundToNearest(dv01, 1).toString());
-    fields.dv01.hasPriority = false;
-    fields = fields;
+    fields.dv01.str = quotes.getDV01FromVol(fields.product, fields.tenor.value, vol);
   }
 
   function setMMP() {
     if (fields.tenor.value) {
-      let volume_mmp = quotes.mmp(fields.product, fields.tenor.value, fields?.fwd?.value) * fields.dv01.value; 
-      fields.volume.str = roundUpToNearest(volume_mmp, 2);
+      let volume_mmp = quotes.mmp(fields.product, fields.tenor.value) * fields.dv01.str; 
+      fields.volume.str = round(volume_mmp*2, 0)/2;
     }
   }
 
@@ -75,22 +85,18 @@
 {#if !fields.interest}
   <div class="container">
       <!-- TODO confirm the invalid works for this field-->
-    <div class="volume-container">
-      <TextInput
-        value={isNaN(fields.volume.str) ? '' : fields.volume.str}
-        invalid={fields.volume.invalid}
-        on:input={handleVolChange}
-        labelText={`Volume from ${fields.dv01_Currency == 'USD' ? 'USD' : products.currency(fields.product)} DV01`}
-        invalidText={fields.volume.error_message}
-        style="width: 100%;"
-      />
-      <span>{$currency_state}</span>
-    </div>
+    <TextInput
+      value={isNaN(fields.volume.str) ? '' : fields.volume.str}
+      invalid={fields.volume.invalid}
+      on:input={handleVolChange}
+      labelText={`Volume from ${fields.dv01_Currency == 'USD' ? 'USD' : products.currency(fields.product)} DV01`}
+      invalidText={fields.volume.error_message}
+    />
 
     {#if products.isStir(fields.product)}
       <TextInput 
         labelText="Multiplier" 
-        bind:value={fields.dv01.value} 
+        bind:value={fields.dv01.str} 
         on:change={setMMP}/>
     {:else if !fields.isFWD && fields.tenor.str}
       <div style="align-self: end;">
@@ -149,19 +155,5 @@ p {
 :global(.vols_breakdown_shown .bx--tooltip--shown ){
   left: -47px;
   margin-top: 2px !important;
-}
-
-.volume-container {
-  position: relative;
-  width: 100%;
-}
-
-.volume-container > span {
-  position: absolute;
-  right: 0.5rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: gray;
-  margin-top: 12px;
 }
 </style>

@@ -30,7 +30,7 @@ const custom_whiteboards = (
         return checkRollbacks(wb);
       });
       set([{board_id:-1, name:"Live Orders", show_ticker:true, lives_only:true}].concat(boards));
-      selected_custom_wb.set(getWBFromId(+sessionStorage.getItem("selected_cwb_id")));
+      selected_custom_wb.set(get(custom_whiteboards)[0]);
     };
 
     /** Used to check if a rollback is needed in the blueprint, for those products and shapes that require it.
@@ -66,20 +66,14 @@ const custom_whiteboards = (
       if (JSON.stringify(wb.prices_blueprint) != JSON.stringify(bp)) {
         if (bp.length) { wb = {...wb, prices_blueprint:bp}; }
         else { wb = {...wb, prices_blueprint:[[{product_id:undefined, shape:undefined, tenors:[]}]], indicators:[]}; }
-        console.info(`Refined tenors in a block of custom whiteboard '${wb.name}' did not match. Associated shape has been rolled back.`);
+        console.log(`Refined tenors in a block of custom whiteboard '${wb.name}' did not match. Associated shape has been rolled back.`);
         websocket.addUpdateCustomWB(wb, "update");
       }
       return wb;
     };
 
     const getAllWBs = function () {
-      return get(custom_whiteboards).filter(f => f.board_id === -1 || f.currency == get(currency_state));
-    };
-
-    const getWBFromId = function (board_id) {
-      const boards = getAllWBs();
-      const ret = boards.find(f => f.board_id == board_id);
-      return board_id && ret ? ret : boards[0];
+      return get(custom_whiteboards).filter(f => f.board_id === -1 || f.currency == get(currency_state).currency);
     };
 
     const addUpdateWB = function (wb) {
@@ -94,7 +88,7 @@ const custom_whiteboards = (
           store.splice(idx, 1, wb);
         } else { 
           type = "add";
-          wb.currency = get(currency_state);
+          wb.currency = currency_state.get_cur();
         }
         return store;
       });
@@ -170,12 +164,11 @@ const custom_whiteboards = (
       selected_custom_wb.set(get(custom_whiteboards)[0]);
     };
 
-    const setToCustom = function (id) {
+    const setToCustom = function () {
       let sel = get(selected_custom_wb);
-      if (sel.board_id === -1 || sel.currency != get(currency_state)) {
+      if (sel.board_id === -1 || sel.currency != currency_state.get_cur()) {
         const b = getAllWBs();
-        const index = id == undefined ? 1 : selected_custom_wb.getIndex(id);
-        selected_custom_wb.set(b.length > 1 ? b[index] : b[0]);
+        selected_custom_wb.set(b.length > 1 ? b[1] : b[0]);
       }
     };
 
@@ -183,7 +176,6 @@ const custom_whiteboards = (
       subscribe,
       init,
       get: getAllWBs,
-      getWBFromId,
       addUpdateWB,
       receiveNewWB,
       deleteWB,
@@ -200,15 +192,6 @@ const selected_custom_wb = (
   function () {
     const { subscribe, set, update } = writable(null);
 
-    subscribe((val) => {
-      if (val) sessionStorage.setItem("selected_cwb_id", val.board_id); //TODO: determine why periodically receiving null/undefined
-    });
-
-    const setWithId = function (board_id) {
-      const wbs = custom_whiteboards.getAllWBs(); 
-      selected_custom_wb.set(wbs.find(c => c.board_id === board_id));
-    };
-
     const getIndex = function (board_id) {
       const wbs = custom_whiteboards.getAllWBs(); 
       return wbs.indexOf(c => c.board_id === board_id);
@@ -224,7 +207,7 @@ const selected_custom_wb = (
         websocket.addUpdateCustomWB(scwb, "update");
         return scwb;
       });
-    };
+    }
 
     const share = function (recipient, wb = get(selected_custom_wb)) {
       if (typeof recipient != "number") {
@@ -240,7 +223,6 @@ const selected_custom_wb = (
     return {
       subscribe,
       set,
-      setWithId, // Unused so far
       get,
       getIndex, // unused so far
       getFilters,

@@ -220,28 +220,14 @@ const prices = (
      *  their whiteboard preferences. Takes a product id and the tenor/years (in array form) to find the price in the 
      *  price structure before splicing it out */
     const removeFromPrefs = function (id, t_years) {
-      if (id == 18) {
-        modifyStructure18(t_years, false);
-      } else if (products.isStir(id)) {
-        update(store => {
-          store[id][0] = store[id][0].map(v => {
-            if (t_years[0] === v.years[0]) {
-              return {...v, persist:false}
-            }
-            return v;
-          });
-          return store;
-        });
-      } else {
-        update(store => {
-          let len = products.isFwd(id) ? t_years.length-2 : t_years.length-1;
-          let rmv_idx = store[id][len].findIndex(search => (search.fwd ? [search.fwd].concat(search.years).toString() : search.years.toString()) == t_years.toString());
-          if (rmv_idx != -1) {
-            store[id][len].splice(rmv_idx, 1);
-          }
-          return store;
-        });
-      }
+      update(store => {
+        let len = products.isFwd(id) ? t_years.length-2 : t_years.length-1;
+        let rmv_idx = store[id][len].findIndex(search => (search.fwd ? [search.fwd].concat(search.years).toString() : search.years.toString()) == t_years.toString());
+        if (rmv_idx != -1) {
+          store[id][len].splice(rmv_idx, 1);
+        }
+        return store;
+      });
     };
 
     const hasGlobalStoreChanged = async function (j_str) {
@@ -272,14 +258,13 @@ const prices = (
             throw new Error("store took too long to update");
           }
           prefs[json.product_id].add = [...prefs[json.product_id].add, json.years];
-          if (json.product_id == 18) { modifyStructure18(json.years, true); }
           defaultPrices(json.product_id);
           sort(json.product_id);
         } else {
           throw new Error("malformed update request");
         }
       } catch (err) {
-        console.error(err.message);
+        console.log(err.message);
         addToast ({
           message: "Global whiteboard preferences have changed but the request was malformed. Please reload your webpage to get the updated tenors.", // TODO: add link to reload page
           type: "info", // change type (re above todo)
@@ -334,6 +319,7 @@ const prices = (
       // Get the prices for the given product.
       update(p => {
         let shape_arrays = p[product_id];
+        if (!shape_arrays) return p;
         // Loop through each type of price: outrights, spreads, butterflys.
         for (let shape_array of shape_arrays) {
           // Loop through all the price_groups for the current shape array.
@@ -369,9 +355,8 @@ const prices = (
       let active = get(active_product);
       if (active == product_id && active == 1) {
         sort(2);
-      } else if (active == product_id && active == 18) {
-        sort(17);
-        sort(27);
+      } else if (active == product_id && active == 2) {
+        sort(1);
       }
       
       resortWithFavourites(product_id);
@@ -399,19 +384,6 @@ const prices = (
         }
         favs.sort((a,b) => { return b.sortCode - a.sortCode; });
         favs.forEach(p => { store[product_id][p.years.length-1].unshift(p); });
-        return store;
-      });
-    };
-
-    /** 
-     *  When an SPS is added or removed from the whiteboard, all of the specifics within it need to be updated to persist accordingly
-     */
-    const modifyStructure18 = function (t_years, persist = true) {
-      update(store => {
-        let location = store[18].findIndex(loc => loc[0]?.fwd === t_years[0] && loc[0]?.years[0] === t_years[1]);
-        if (location != -1) {
-          store[18][location] = store[18][location].map(v => { return {...v, persist}});
-        }
         return store;
       });
     };
@@ -456,7 +428,7 @@ const prices = (
           offers_are_unsorted: false,
           bids_are_unsorted: false,
           currency: null,
-          persist: price.persist,
+          persist: true,
           expanded: false,
         };
         groups[location].push(price_group);
@@ -468,7 +440,7 @@ const prices = (
       let shape_array = get(prices)[pg.product_id];
       if (pg.product_id == 18) {
         let startMonth = pg.fwd * 12;
-        if (pg.years[0] == 0.5) startMonth + 25;
+        if (pg.years[0] = 0.5) startMonth + 25;
         let pgArr = shape_array[startMonth];
         for (let group of pgArr) {
           if (pg.tenor == group.tenor) return group;
@@ -497,7 +469,7 @@ const prices = (
       // Loop over the price groups for the one with our sort code.
 
       // Generate tenor which will user to find price group
-      let tenor = genericToTenor(price, true);
+      let tenor = genericToTenor(price);
       
       if (price.product_id == 18) {
 
@@ -529,9 +501,7 @@ const prices = (
       }
 
       for (let price_group of groups) {
-        if (price_group.sortCode === sortCode && tenor == price_group.tenor || (price.product_id == 17 || price.product_id == 27) && tenor == price_group.tenor) {
-          return price_group;
-        }
+        if (price_group.sortCode === sortCode && tenor == price_group.tenor || (price.product_id == 17 || price.product_id == 27) && tenor == price_group.tenor) return price_group;
       }
 
       try {
@@ -553,7 +523,7 @@ const prices = (
           offers_are_unsorted: false,
           bids_are_unsorted: false,
           currency: null,
-          persist: price.persist ?? false,
+          persist: false,
           expanded: false,
         };
 
@@ -591,7 +561,7 @@ const prices = (
 
       if (product_id == 18) {
         
-        const fwds = products.getValidSPS();
+        const fwds = tenor_array;
 
         // for each year, create a mock price and get the price group associated with it
         update(store => {
@@ -601,23 +571,20 @@ const prices = (
             let tommorrowMonth = addDays(new Date(), 1).getMonth();
             if (!(todayMonth != tommorrowMonth && (fwd[0] == 0))){ 
 
-              let persist = !!tenor_array.find(find => find[0] === fwd[0] && find[1] === fwd[1]);
-
               // this is a hacky implementation to get the correct price group,
               // by creating a "price" object that has only the values getPriceGroup needs
               let price = {
                 years: [fwd[1]],
                 product_id: product_id,
                 fwd: fwd[0],
-                shape: () => 'outright',
-                persist
+                shape: () => 'outright'
               };
 
               // this function creates the price group and adds it to the store
               let price_group = _getPriceGroup(store, price);
               if (price_group != null){
                 // set these price groups to persist, so they are not deleted when prices are removed
-                price_group.persist = persist;
+                price_group.persist = true;
               }
             }
           });
@@ -675,23 +642,20 @@ const prices = (
 
         update(store => {
           for (let i = 0; i < 12; i++ ) {
-
-            let persist = !!tenor_array.find(find => find[0] === 1001+i);
-
+            
             // this is a hacky implementation to get the correct price group,
             // by creating a "price" object that has only the values getPriceGroup needs
             let price = {
               years: [1001 + i],
               product_id: product_id,
               start_date: today.toISOString(),
-              shape: () => 'outright',
-              persist
+              shape: () => 'outright'
             };
 
             // this function creates the price group and adds it to the store
             let price_group = _getPriceGroup(store, price);
             // set these price groups to persist, so they are not deleted when prices are removed
-            price_group.persist = persist;
+            price_group.persist = true;
             today.setMonth(today.getMonth() + 3);
           }
 
@@ -828,7 +792,6 @@ const prices = (
       remove,
       removeFromPrefs,
       updateFromGlobal,
-      modifyStructure18,
       sort,
       recalculateMids,
       defaultPrices,

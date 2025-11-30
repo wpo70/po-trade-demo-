@@ -156,6 +156,26 @@ class Validator {
       throw new Error("Fwds currently only support outrights");
     }
 
+    // Convert any weeks to years.
+    // Convert any months to years. 
+    // years.forEach (y => {
+    //   console.log(y);
+    //   let type = y.slice(-1) ? y.slice(-1) : null;
+    //   switch (type) {
+    //   case 'm':
+    //   case 'M':
+    //     y = parseFloat(y) / 12;
+    //     break;
+    //   case 'w':
+    //   case 'W':  
+    //     y =  parseFloat(y) / 52;
+    //     break;
+    //   default:
+    //     y = parseFloat (y);
+    //     break;
+    //   }
+    // })
+
     years = years.map(y =>
       (y.slice(-1) === 'm' || y.slice(-1) === 'M') ? parseFloat(y) / 12 : ((y.slice(-1) === 'w' || y.slice(-1) === 'W') ? parseFloat(y) / 52 :parseFloat(y))
     );

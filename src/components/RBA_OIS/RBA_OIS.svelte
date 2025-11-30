@@ -10,6 +10,7 @@
     import RbaOisHistoryTable from "./RBA_OIS_HistoryTable.svelte";
     import RBA_OIS_TradeForm from "./RBA_OIS_TradeForm.svelte";
     import OrderForm from "../OrderForm/OrderForm.svelte";
+    import WhiteBoard from "../WhiteBoard.svelte";
 
     import { Button } from "carbon-components-svelte";
     import OrderTable from "../OrderTable.svelte";
@@ -17,6 +18,13 @@
     import quotes from "../../stores/quotes";
     import ticker from "../../stores/ticker";
     import data_collection_settings from "../../stores/data_collection_settings";
+    import active_product from "../../stores/active_product";
+    import { onMount } from "svelte";
+
+    // Set active product to OIS (20) when on this page
+    onMount(() => {
+        active_product.set(20);
+    });
 
     let spotRates;
     let spreadsTenor;
@@ -48,6 +56,9 @@
             {
                 label: "Live Orders",
                 component: OrderTable
+            },
+            {
+                label: "WhiteBoard"
             },
             {
                 label: "Rba Runs and Spot Dates"
@@ -105,20 +116,24 @@
 
                 {#each items as item, idx}
                     {#if activeTabValue == idx}
-                        {#if isItemRBASpot(item)}
+                        {#if item.label === "Live Orders"}
+                            <div class="box" style="justify-content: center; display: block;">
+                                <svelte:component this={item.component} {active_orders} bind:selection showCompleteOrderTable={false}/>
+                                {#if active_orders.length === 0}
+                                    <h3 style="text-align: center; padding-top: 20px;">There are no RBA OIS orders</h3>
+                                {/if}
+                            </div>
+                        {:else if item.label === "WhiteBoard"}
+                            <div class="box" style="justify-content: center; display: block;">
+                                <WhiteBoard showIndicators={false} bind:copyData/>
+                            </div>
+                        {:else if isItemRBASpot(item)}
                             <div class="box">
                                 <div style="display: flex;">
                                     <div><RbaRunsTable data={rbaRuns} bind:copyData/></div>
                                     <div style="width: 20px;"></div>
                                     <div><SpotRatesTable data={spotRates} bind:copyData/></div>
                                 </div>
-                            </div>
-                        {:else if idx == 0}
-                            <div class="box" style="justify-content: center; display: block;">
-                                <svelte:component this={item.component} {active_orders} bind:selection/>
-                                {#if active_orders.length === 0}
-                                    <h3 style="text-align: center; padding-top: 20px;">There are no RBA OIS orders</h3>
-                                {/if}
                             </div>
                         {:else if item.data == null}
                             <div class="box">

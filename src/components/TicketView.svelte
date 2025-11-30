@@ -13,7 +13,6 @@
     timestampToISODate,
     toEFPSPSTenor,
     roundToNearest,
-    genericToTenor,
     tenorToYear,
   } from "../common/formatting.js";
   import bank_divisions from "../stores/bank_divisions.js";
@@ -41,7 +40,7 @@
   $: { 
     active_prod = tickets?.tickets[0]?.product_id ?? $active_product;
     // Add fx extension in each ticket object
-    let fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state);
+    let fx = $dailyfx.find((i) => i.security.substring(0,3) == $currency_state.currency);
     fxrate = fx.override ? fx.override: fx.value;
   }
   
@@ -337,25 +336,16 @@ function handlePaymentFreq(e, i, leg) {
   }
 }
 
-function getSTIRFwd(ticket) {
-  if (typeof ticket.fwd === "number") { return ticket.fwd * 12; }
-
-  const today = new Date();
-  const start = new Date(ticket.start_date);
-  const diff = (start - today) / (1000 * 60 * 60 * 24 * 30) ;
-
-  return Math.round(diff);
-};
-
 // OCO
 let isOCO_offer;
 let isOCO_bid;
 $: {
   let c = $ocos;
-  const checkBic = (t, bid) => {if (!t["bic_"+bid]?.bank_id) console.error(`Bank combination is unhandled in BIC rules. Error caused by ${bid}`)};
-  isOCO_bid = tickets.tickets.map((t) => { checkBic(t, "bid"); return ocos.isOCO(t.bic_bid.bank_id, t.product_id) });
-  isOCO_offer = tickets.tickets.map((t) => { checkBic(t, "offer"); return ocos.isOCO(t.bic_offer.bank_id, t.product_id) });
+  isOCO_offer = tickets.tickets.map((t) => { return t.bic_offer ? ocos.isOCO(t.bic_offer.bank_id, t.product_id) : false });
+  isOCO_bid = tickets.tickets.map((t) => { return t.bic_bid ? ocos.isOCO(t.bic_bid.bank_id, t.product_id) : false });
 }
+
+const isSTIR = (product_id) => product_id === 17 || product_id === 18 || product_id === 27;
 
 </script>
 
@@ -364,7 +354,15 @@ $: {
   <div class="ticket ticket_view" >
     <div class="tenor-container" >
       <div style="display:flex; flex-grow: 1;">
-        <p class="tenor-label" style="text-align: left; padding-right: 0; padding-left: 5px">{products.name(ticket.product_id)}{'\u2003'}{genericToTenor(ticket)}&ensp;@&ensp;</p>
+        {#if isSTIR(ticket.product_id ?? $active_product) || products.isFwd(ticket.product_id ?? $active_product)}
+          {#if products.name(ticket.product_id) === "EFP SPS" || products.name(ticket.product_id) === "SPS 90" }
+            <p class="tenor-label" style="text-align: left; padding-right: 0; padding-left: 5px">{products.name(ticket.product_id)}{'\u2003'}{toEFPSPSTenor(ticket.start_date)}&ensp;@&ensp;</p>
+          {:else}
+            <p class="tenor-label" style="text-align: left; padding-right: 0; padding-left: 5px">{products.name(ticket.product_id)}{'\u2003'}{ticket.fwd*12}&nbsp;x&nbsp;{ticket.fwd*12 + 3}&ensp;@&ensp;</p>
+          {/if}
+        {:else}
+          <p class="tenor-label" style="text-align: left; padding-right: 0; padding-left: 5px">{products.name(ticket.product_id)}{'\u2003'}{active_prod == 20 ? toRBATenor([ticket.year]) : toTenor(ticket.year)}&ensp;@&ensp;</p>
+        {/if}
         <input class="yield-input"
         type="number"
         contenteditable
@@ -408,7 +406,7 @@ $: {
                   selected={ticket.offer_bank_division_id} 
                   on:update={e => group_handler(e.detail, i, 'offer')}
                   disabled={!editable}>
-                  {#each bank_divisions.getBankDivisions(bank_divisions.get(ticket.offer_bank_division_id).bank_id) as bank_div}
+                  {#each bank_divisions.getBankDivisions(bank_divisions.get(ticket.offer_bank_division_id)?.bank_id) as bank_div}
                     <SelectItem value={bank_div.bank_division_id} text={bank_div.name}/>
                   {/each}
                 </Select>
@@ -420,6 +418,7 @@ $: {
                 <strong>Bic</strong>
               </div>
               <div class="lightSelect" style="width: 65%">
+                {#if ticket.bic_offer}
                 <Select 
                   selected={ticket.bic_offer.id} 
                   on:update={e => bic_handler(e.detail, i, 'offer')}
@@ -428,6 +427,9 @@ $: {
                     <SelectItem value={bank_bic.id} text={bank_bic.legalentity}/>
                   {/each}
                 </Select>
+                {:else}
+                <span>N/A</span>
+                {/if}
               </div>
             </div>
             {#if products.isFuturesProd(tickets.tickets[0].product_id)}
@@ -455,7 +457,7 @@ $: {
                   selected={ticket.bid_bank_division_id} 
                   on:update={e => group_handler(e.detail, i, 'bid')}
                   disabled={!editable}>
-                  {#each bank_divisions.getBankDivisions(bank_divisions.get(ticket.bid_bank_division_id).bank_id) as bank_div}
+                  {#each bank_divisions.getBankDivisions(bank_divisions.get(ticket.bid_bank_division_id)?.bank_id) as bank_div}
                     <SelectItem value={bank_div.bank_division_id} text={bank_div.name}/>
                   {/each}
                 </Select>
@@ -467,6 +469,7 @@ $: {
                 <strong>Bic</strong> 
               </div>
               <div class="lightSelect" style="width: 65%">
+                {#if ticket.bic_bid}
                 <Select 
                   selected={ticket.bic_bid.id} 
                   on:update={e => bic_handler(e.detail, i, 'bid')}
@@ -475,6 +478,9 @@ $: {
                     <SelectItem value={bank_bic.id} text={bank_bic.legalentity}/>
                   {/each}
                 </Select>
+                {:else}
+                <span>N/A</span>
+                {/if}
               </div>
             </div>
             {#if products.isFuturesProd(tickets.tickets[0].product_id)}
@@ -594,6 +600,19 @@ $: {
             </div>
           </div>
         {/if}
+
+        <!-- Start OCO -->
+        <div class="tot-vols-container" style="border-top: 1px dashed #aaaaaa;">
+          <div class="left-col" style="padding-bottom: 0; ">
+            <dt>OCO</dt>
+            <dd><Checkbox checked={isOCO_offer[i]} on:check={(e) => {if(ticket.bic_offer) ocos.setOCO(ticket.bic_offer.bank_id, ticket.product_id, e.detail)}} disabled={!editable || !ticket.bic_offer}/></dd>
+          </div>
+          <div class="right-col" style="padding-bottom: 0;">
+            <dt>OCO</dt>
+            <dd><Checkbox checked={isOCO_bid[i]} on:check={(e) => {if(ticket.bic_bid) ocos.setOCO(ticket.bic_bid.bank_id, ticket.product_id, e.detail)}} disabled={!editable || !ticket.bic_bid}/></dd>
+          </div>
+        </div>
+        <!-- End OCO -->
 
         <!-- Start Right To Break -->
         <div class="rtb">

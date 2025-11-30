@@ -54,7 +54,7 @@
         if (isNaN(ovr) || text === toPrice(ind.mid)) {
             ovr = null;
         }
-        websocket.overrideQuote(ind, ovr, $currency_state);
+        websocket.overrideQuote(ind, ovr, currency_state.get_cur());
     }
     
     // returns true if the given character is between 0-9 OR is '.' or '+'or '-'

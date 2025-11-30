@@ -1,6 +1,6 @@
 <script>
 import { CopyButton, RadioButtonGroup, RadioButton } from "carbon-components-svelte";
-import CustomComboBox from "../Utility/CustomComboBox.svelte";
+import CustomComboBox from "./../CustomComboBox.svelte";
 
 import quotes from '../../stores/quotes';
 import products from '../../stores/products';

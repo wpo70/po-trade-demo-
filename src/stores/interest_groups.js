@@ -16,7 +16,7 @@ const interest_groups = (function () {
 
     const arr = get(interest_groups);
     const interest_group = arr.find(ig => ig.bank_division_id === bank_id);
-    return interest_group.name;
+    return interest_group?.name ?? 'Unknown';
   };
 
   const getAllInterestGroups = function () {

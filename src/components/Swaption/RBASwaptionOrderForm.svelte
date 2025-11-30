@@ -8,7 +8,7 @@
     Checkbox,
   } from 'carbon-components-svelte';
 
-  import CustomDatePicker from '../Utility/CustomDatePicker.svelte';
+  import CustomDatePicker from '../CustomDatePicker.svelte';
   import SwaptionTicket from './SwaptionTicket.svelte';
   import SwaptionOrderForm from './SwaptionOrderForm.svelte';
 

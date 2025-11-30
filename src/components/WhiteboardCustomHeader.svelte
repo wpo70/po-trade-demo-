@@ -61,7 +61,22 @@
     cswitcher_index += idx_offset;
     handleEdit();
   }
+
+  $: tab_title = () => {
+    switch ($selected_custom_wb?.board_id) {
+      case null:
+      case undefined:
+        return "";
+      case -1:
+        return " - Live Orders"
+      default:
+        return ` - Custom: ${$selected_custom_wb.name}`;
+    }};
 </script>
+
+<svelte:head>
+  <title>Rate Edge OMS {tab_title()}</title>
+</svelte:head>
 
 <svelte:window on:click={({target}) => {if (!switcher_ref?.querySelector("#dd_button")?.contains(target)) { open_dropdown = false; }}}/>
 
@@ -155,7 +170,7 @@
   }
   #slope {
     height: 38px;
-    margin-left: 29px;
+    margin-left: 31px;
     margin-right: 8px;
     border-left: 7px solid var(--cds-inverse-support-04);
     transform: skew(60deg);

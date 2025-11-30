@@ -29,9 +29,9 @@ module.exports.gw_connect = async function (req, res) {
     is_gateway: true,
     is_pocbot: false,
     blp_connected: false,
+    sheet_connected: false,
     is_markit: false,
-    user: req.body.user,
-    ip: req.body.ip,
+    user: "Not Available",
   }
   sessions.set(userId, newGW);
 

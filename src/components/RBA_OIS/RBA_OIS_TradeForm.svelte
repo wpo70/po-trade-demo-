@@ -25,8 +25,8 @@
   import user from '../../stores/user.js';
   import OisTicket from "./OISTicket.svelte";
   import websocket from "../../common/websocket.js";
-  import CustomDatePicker from "../Utility/CustomDatePicker.svelte";
-  import CustomComboBox from "../Utility/CustomComboBox.svelte";
+  import CustomDatePicker from "../CustomDatePicker.svelte";
+  import CustomComboBox from "../CustomComboBox.svelte";
   import { getRateForDates } from "../../common/pricing_models.js";
 
   export let rba_dates = [];
@@ -340,6 +340,7 @@
       broker_id: broker_id,
       time_placed: leg.timestamp,
       time_closed: leg.timestamp,
+      confirmed: true,
       muted: false,
       currency_code: leg.currency,
       fwd: null,

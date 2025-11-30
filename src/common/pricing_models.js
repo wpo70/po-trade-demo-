@@ -3,12 +3,12 @@
 import { get } from "svelte/store";
 import quotes from "../stores/quotes";
 import { addMonths, addYears, tenorToYear, toTenor, addTenorToDays, addDays, round, roundToNearest, convertDateToString } from "./formatting";
+import Spline from "cubic-spline";
 import ticker from "../stores/ticker";
 import prices from "../stores/prices";
 import products from "../stores/products";
 import { clearAll, findRbaDates } from "./rba_handler";
-import data_collection_settings from "../stores/data_collection_settings.js";
-import CustomSpline from "../../server/custom_spline";
+
 let initialisedSpline_3m = false;
 let initialisedSpline_6m = false;
 let initialisedOISCurve = false;
@@ -23,8 +23,8 @@ let OISCurve;
 let rbaDates;
 let splinesArray = [];
 
-let current3mBBSW = ticker?.getBBSW()[2].mid; // Current 3M BBSW Flat rate
-let current6mBBSW = ticker?.getBBSW()[5].mid; // Current 6M BBSW Flat rate
+let current3mBBSW = ticker.getBBSW()[2].mid; // Current 3M BBSW Flat rate
+let current6mBBSW = ticker.getBBSW()[5].mid; // Current 6M BBSW Flat rate
 
 export function refreshData() {
   current3mBBSW = ticker.getBBSW()[2].mid;
@@ -149,14 +149,16 @@ export function calc6mSps(days) {
 
 // Creates a cubic spline interpolation model
 function createSpline(data) {
+
   // Sort the data by start date
   data.sort((a, b) => a.start - b.start);
+
   // Get the x and y values for the interpolation
   const x = data.map(d => d.start);
   const y = data.map(d => d.price);
-  let interpChoice = get(data_collection_settings).interpChoice;
-  let spline = new CustomSpline(x, y, interpChoice);
-  return spline;
+
+  // Initialize the spline with the x and y values
+  return new Spline(x, y);
 }
 
 // Gets the thursday following the first friday of the month
@@ -232,7 +234,6 @@ function init6mSpline() {
   spline_6m = createSpline(data);
 }
 
-
 // Initializes the data for the 6s3s curve
 function init6s3sSpline() {
   isInitSplinesArray[5] = true;
@@ -296,7 +297,16 @@ export function getOISMid (year) {
   let rate;
   if (year > 1000) {
     if (!rbaDates) rbaDates = findRbaDates();
+    // Safety check: ensure rbaDates is valid
+    if (!rbaDates || Object.keys(rbaDates).length === 0) {
+      console.warn('getOISMid: No RBA dates available');
+      return 0;
+    }
     let rbaindex = year - 1000;
+    if (!rbaDates[rbaindex] || !rbaDates[rbaindex + 1]) {
+      console.warn('getOISMid: Missing RBA date for index', rbaindex);
+      return 0;
+    }
     rate = getRateForDates(rbaDates[rbaindex], rbaDates[rbaindex + 1]);
     if (rate < 10) return rate;
     else return 0; 
@@ -315,11 +325,29 @@ export function getOISMid (year) {
 
 export function getRateForDates (d1, d2, return_DV01 = false, year = null) {
   if (!initialisedOISCurve) initOISCurve();
-  
+
+  // Safety check: ensure dates are valid
+  if (!d1 || !d2 || !(d1 instanceof Date) || !(d2 instanceof Date)) {
+    console.warn('getRateForDates: Invalid dates provided', d1, d2);
+    return return_DV01 ? [0, 0] : 0;
+  }
+
+  // Safety check: ensure OISCurve has data
+  if (!OISCurve || Object.keys(OISCurve).length === 0) {
+    console.warn('getRateForDates: OISCurve not initialized');
+    return return_DV01 ? [0, 0] : 0;
+  }
+
   let days = roundToNearest((d2.getTime() - d1.getTime()) / (24 * 60 * 60 * 1000), 1);
   let comp1 = OISCurve[convertDateToString(d1)]?.compound;
   let comp2 = OISCurve[convertDateToString(d2)]?.compound;
   
+  // Safety check: ensure compound values exist
+  if (!comp1 || !comp2) {
+    console.warn('getRateForDates: Missing compound values for dates', convertDateToString(d1), convertDateToString(d2));
+    return return_DV01 ? [0, 0] : 0;
+  }
+
   let rate = roundToNearest((((comp2 / comp1) - 1) * 36500) / days, 800);
   if (return_DV01) return [rate, !year ? (1-(comp1/comp2))/(rate/100) : (1/comp1)*quotes.dv01(1, year)];
   else return rate;
@@ -339,16 +367,37 @@ function initOISCurve () {
   let today = new Date();
   let date = new Date();
 
-  let rbaDates = quotes.getRbaDates()
+  // Safety check: ensure RBA dates are available
+  let rawRbaDates = quotes.getRbaDates();
+  if (!rawRbaDates || !Array.isArray(rawRbaDates) || rawRbaDates.length === 0) {
+    console.warn('initOISCurve: No RBA dates available yet');
+    return;
+  }
+
+  let rbaDates = rawRbaDates
     .map( d => !isNaN(new Date(d.start_date)) ? new Date(d.start_date):"TBA")
+    .filter(d => d !== "TBA")
     .sort((a,b) => a-b);
-  rbaDates = rbaDates.slice(rbaDates.findIndex(d => d > today) - 1);
   
+  if (rbaDates.length === 0) {
+    console.warn('initOISCurve: No valid RBA dates after filtering');
+    return;
+  }
+
+  let sliceIndex = rbaDates.findIndex(d => d > today);
+  if (sliceIndex <= 0) sliceIndex = 1;
+  rbaDates = rbaDates.slice(sliceIndex - 1);
+  
+  if (rbaDates.length === 0 || !rbaDates[0]) {
+    console.warn('initOISCurve: No RBA dates after slicing');
+    return;
+  }
+
   let rbaIndex = 0;
   if (rbaDates[0].getMonth() != today.getMonth()) rbaIndex = 1;
 
   let keyDates = [];
-  while (rbaIndex < rbaDates.length && keyDates.length < 17) {
+  while (rbaIndex < rbaDates.length && keyDates.length < 18) {
     if (rbaDates[rbaIndex].getMonth() == date.getMonth()) {
       keyDates.push(rbaDates[rbaIndex]);
       rbaIndex++;

@@ -112,9 +112,3 @@ module.exports.updateCalcOISPreference = async function (bool) {
   general.calcOIS = bool;
   await query('UPDATE preferences SET general = $1 WHERE broker_id = 999', [general]);
 };
-
-module.exports.updateInterpPreference = async function (bool) {
-  let general = (await query('SELECT general FROM preferences WHERE broker_id = 999')).rows[0].general ?? {};
-  general.interpChoice = bool;
-  await query('UPDATE preferences SET general = $1 WHERE broker_id = 999', [general]);
-}

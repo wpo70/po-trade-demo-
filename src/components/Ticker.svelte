@@ -1,181 +1,190 @@
+
 <script>
-  import ticker from '../stores/ticker.js';
-  import currency_state from '../stores/currency_state.js';
-  import quotes_store from '../stores/quotes.js';
-  import { roundToNearest, yearsToSortCode } from '../common/formatting.js';
-  import prices from '../stores/prices.js';
-  import data_collection_settings from '../stores/data_collection_settings.js';
+import ticker from '../stores/ticker.js';
+import currency_state from '../stores/currency_state.js';
+import data_collection_settings from '../stores/data_collection_settings.js';
 
-  export let ref;
- 
-  /* ========== Data Structure ========== */
+const n = 4;
 
-  $: ticker_data = setTickers($currency_state)
+let signals = [];
+let tickers = ["yma", "xma", "abfs"]; // default at AUD
 
-  $: quotes = setQuotesTickers($currency_state);
-
-  function setTickers(curr = $currency_state) {
-    let tickers = ["yma", "xma", "abfs"]; // Default to AUD products if other curr not defined below
-    if (['USD'].includes(curr)) {
-      tickers = ["ct2","ct3","ct4","ct5","ct6","ct7","ct8","ct9","ct10","ct12","ct15","ct20", "ct30"];
+$: {
+  if (['AUD','NZD'].includes($currency_state.currency)) {
+    tickers = ["yma", "xma", "abfs"];
+    signals = [];
+    for (let tic of tickers ) {
+        signals.push({
+          ticker: tic,
+          prev: 0, // floats holding the previous last values 
+          up: null // booleans handling the colour state
+      })
     }
-    return tickers.map(t => ({
-        ticker: t,
-        prev: $ticker[t]?.last, // floats holding the previous last values 
-        up: null, // booleans handling the colour state
-      }));
-  }
-
-  function setQuotesTickers(curr = $currency_state) {
-    quotes = [];
-    if (curr == 'AUD') {
-      quotes.push(...[
-        { name: "1Y1Y FWD IRS", product_id: 19, year: 1, fwd: 1 },
-        { name: "5Y5Y FWD IRS", product_id: 19, year: 5, fwd: 5 },
-        { name: "1Y1Y FWD B/S", product_id: 26, year: 1, fwd: 1 },
-        { name: "5Y5Y FWD B/S", product_id: 26, year: 5, fwd: 5 }
-      ]);
-    }
-    updateQuotes();
-    return quotes;
-  }
-
-  /* ========== Data Updates/Reactivity ========== */
-
-  $: updateTickers($ticker);
-
-  function updateTickers() {
-    const upOrDown = (val, prev, prev_up) => prev === undefined ? null : val === prev ? prev_up : val > prev;
-
-    ticker_data.forEach(i => { // handles updating the colour state 
-      const last = $ticker[i.ticker]?.last;
-      i['up'] = upOrDown(last, i['prev'], i['up']);
-      i['prev'] = last;
-    });
-    ticker_data = ticker_data;
-  }
-
-  $: updateQuotes($prices);
-
-  function updateQuotes() {
-    quotes = quotes.map(q => {
-      let pg = prices.getPriceGroup({product_id:q.product_id, years: [q.year], sortCode: yearsToSortCode([q.year], q.fwd)});
-      if (!pg) { return q; }
-      return {
-        ...q,
-        bid: pg.bids?.[0]?.price,
-        ask: pg.offers?.[0]?.price,
-        mid: quotes_store.get(q.product_id, q.year).fwd_mids[q.year],
-      }
-    });
-  }
-
-  /* ========== Visual Formatting ========== */
-
-  const eighthbp = 800;
-  const tickerVal = (tic, field) => !data_collection_settings.activeGatewayCount() ? '\u2014' : roundToNearest($ticker[tic]?.[field], eighthbp);
-
-  function tickerTitle(ticker) {
-    switch (ticker) {
-      case"yma":
-        return "3Y FUT";
-      case "xma":
-        return "10Y FUT";
-      case "abfs":
-        return "3Yx10Y FUT";
-      default:
-        return  ticker.toUpperCase();
+  } else if (['USD'].includes($currency_state.currency)) {
+    tickers = ["ct2","ct3","ct4","ct5","ct6","ct7","ct8","ct9","ct10","ct12","ct15","ct20", "ct30"];
+    signals = [];
+    for (let tic of tickers) {
+        signals.push({
+          ticker: tic,
+          prev: 0, // floats holding the previous last values 
+          up: null // booleans handling the colour state
+      });
+    
     }
   }
+}
+$: { 
+  if (signals.length !== 0){
+   for (let i of signals ) {
+    // handles updating the colour state 
+    if (i?.['prev'] !== 0) {
+      i['up'] = upOrDown($ticker[`${i['ticker']}`]?.last,i?.['prev'],i?.['up']); 
+    }
+    i['prev'] = $ticker[`${i['ticker']}`]?.last;
+  }
+}
+}
+
+const converTickerToName =(ticker) =>{
+  switch (ticker) {
+    case"yma":
+      return "3Y FUT";
+    case "xma":
+      return "10Y FUT";
+    case "abfs":
+      return "3Y x 10Y FUT";
+    default:
+      return  ticker.toUpperCase();
+  }
+}
+
+// handles the logic for setting the colours
+// if the new value is greater than the previous, returns true (green)
+// if the new value is less than the previous, returns false (red)
+// if the new value is equal to the previous, returns null (grey default colour)
+function upOrDown(val, prev, prev_up) {
+  if (prev === null) {
+    return null;
+  }
+
+  if (val > prev) {
+    return true;
+  } else if (val < prev) {
+    return false;
+  } else {
+    return prev_up;
+  }
+}
+const getSignalStatus =(tic, $ticker) =>{
+  return signals?.filter(i => i["ticker"] == tic)?.[0]?.up
+}
 </script>
 
-
-<div bind:this={ref} class="card-group">
-  {#each ticker_data as t}
-    {@const movement = t.up}
-    <div class="market-card">
-      <span class="title">{tickerTitle(t.ticker)}</span>
-      <span class="field bid">
-        BID {tickerVal(t.ticker, 'bid')}
-      </span>
-      <span class="field ask">
-        ASK {tickerVal(t.ticker, 'ask')}
-      </span>
-      <span class="field last"
-        class:up={movement}
-        class:down={movement !== null ? !movement : false}
-        >
-        LAST {tickerVal(t.ticker, 'last')}
-        {#if movement == true}
-          {"\u2002\u25B2"}
-        {:else if movement == false}
-          {"\u2002\u25BC"}
-        {/if}
-      </span>
-    </div>
-  {/each}
-  {#each quotes as quote}
-    <div class="market-card">
-      <span class="title">
-        {quote.name}
-      </span>
-      <span class="field bid">
-        BID {quote.bid == null ? '\u2014' : roundToNearest(quote.bid, eighthbp)}
-      </span>
-      <span class="field ask">
-        ASK {quote.ask == null ? '\u2014' : roundToNearest(quote.ask, eighthbp)}
-      </span>
-      <span class="field last">
-        MID {roundToNearest(quote.mid, eighthbp)}
-      </span>
+  <div class="ticker-banner_layout" style="display: flex;flex-direction:row;gap:10px; font-size:small;">
+  {#each tickers as tic, i }
+    <div class="ticker-card_wrapper" style="box-shadow: 0 6px 0px 0 rgba(0, 0, 0, 0.10)">
+      <card class=" MarketCard-container" >
+        <div class="MarketCard-row" >
+          <span class="MarketCard-symbol">{converTickerToName(tic)}</span>
+          <span class="MarketCard-stockPosition" class:MarketChangepts={$data_collection_settings.gateways.length !== 0}>
+            BID {$ticker[`${tic}`]?.bid?.toFixed(n)}
+          </span>
+        </div>
+        <div class="MarketCard-row">
+          <!-- arrow signal -->
+          <span class={ getSignalStatus(tic, $ticker) !== null ? (getSignalStatus(tic, $ticker) ? "MarketCard-triangle-up" : "MarketCard-triangle-down") : ""} aria-hidden="true"></span>
+          <div style="display: flex;flex-direction: column;">
+            <div class="MarketCard-changeData">
+              <span class="MarketCard-stockPosition"  class:MarketChangepts={$data_collection_settings.gateways.length !== 0}>
+                ASK {$ticker[`${tic}`]?.ask?.toFixed(n)}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="MarketCard-row">
+          <div>
+            <span class="MarketCard-lastTime MarketCard-stockPosition"  
+                  class:MarketChangepts={$data_collection_settings.gateways.length !== 0}
+                  class:green={getSignalStatus(tic, $ticker) !== null ? getSignalStatus(tic, $ticker) : false} 
+                  class:red={getSignalStatus(tic, $ticker) !== null ? !getSignalStatus(tic, $ticker) : false}
+                  >LAST {$ticker[`${tic}`]?.last?.toFixed(n)}
+            </span>
+          </div>
+        </div>
+      </card>
     </div>
   {/each}
 </div>
 
-
 <style>
-  .card-group {
-    display: flex;
-    gap: 14px;
-    margin: 8px 7px;
-    &:first-child {
-      margin-left: 0px;
-    }
+
+  .green {
+    color: #3bdb23;
   }
-
-  .market-card {
-    display: grid;
-    grid-template: 'title bid' 1fr 'title ask' 1fr 'last last' 1fr;
-    grid-template-columns: auto max-content;
-    gap: 0px 14px;
-    padding: 5px 8px;
-    height: 70px;
-    width: 200px;
-    background-color: var(--cds-button-separator);
-    font-size: small;
+  .red {
+    color: red;
   }
+  .MarketCard-container:first-child {
+    margin-left: 0;
+}
+.MarketCard-row{
+  align-items: center;
+  display: flex;
+  flex-direction: row;
+  height: 33.33%;
+  justify-content: space-between;
+  padding: 0 10px;
+  width: 100%;
+}
 
-  .title {
-    grid-area: title;
-    font-size: 13px;
-    font-weight: 700;
-    line-height: 1.2;
-    color: #EB8A04;
-    justify-self: start;
-    text-align: left;
-  }
-
-  .field {
-    font-size: 13px;
-    font-weight: 600;
-    line-height: 1.2;
-  }
-
-  .bid, .ask { justify-self: end; max-width: 105px; }
-  .bid { grid-area: bid;  }
-  .ask { grid-area: ask; align-self: center; }
-  .last { grid-area: last; justify-self: start; align-self: center; }
-
-  .up { color: #3bdb23; }
-  .down { color: red; }
+.MarketCard-stockPosition {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: .7;
+}
+.MarketChangepts{
+  opacity: 1;
+}
+.MarketCard-symbol {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--cds-link-01, #78a9ff);
+}
+.MarketCard-row:first-child {
+    transform: translateY(2px);
+}
+.MarketCard-row:last-child {
+    transform: translateY(-2px);
+}
+.MarketCard-container {
+    background-color: inherit;
+    display: block;
+    height: 66px;
+    margin: 0 5px;
+    max-width: 180px;
+    min-width: 180px;
+    position: relative;
+    background-color: #181818;
+}
+.MarketCard-container:hover{
+  background-color: #393939;
+}
+.MarketCard-triangle-down {
+    border-top: 10px solid red;
+}
+.MarketCard-triangle-up {
+    border-bottom: 10px solid #3bdb23;
+}
+.MarketCard-triangle-down, 
+.MarketCard-triangle-up {
+    border-left: 5px solid #0000;
+    border-right: 5px solid #0000;
+    height: 0;
+    width: 0;
+}
+.MarketCard-lastTime {
+    left:0;
+}
 </style>

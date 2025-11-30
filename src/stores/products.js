@@ -14,7 +14,6 @@ import filters from './filters.js';
 import active_product from './active_product.js';
 import preferences from './preferences.js';
 import user from './user.js';
-import currency_state from './currency_state.js';
 
 export var selection_by_product;
 
@@ -80,12 +79,7 @@ const products = (
       prices.set(client_prices);
       tradess.set(client_trades);
       filters.set(client_filters);
-    };
-
-    const getCurrentProds = function (curr = get(currency_state)) {
-      let filter = [1, 2, 17, 18, 27, 28, 29];
-      filter.push.apply(filter, getFwdProducts());
-      return get(products).filter(p => { return p.currency_code === curr && !filter.includes(p.product_id) });
+      active_product.set(db_data[0].product_id);
     };
 
     const name = function (product_id) {
@@ -100,6 +94,8 @@ const products = (
       const c = arr.find(p => p.product_id === product_id);
       return (typeof c === 'undefined') ? "" : c.currency_code;
     };
+
+    // Function to get an array of the product_ids.
 
     const ids = function () {
       const arr = get(products);
@@ -146,17 +142,11 @@ const products = (
     };
 
     const isPercentageProd = function (pid, years = [0]) {
-      const arr = get(products);
-      const r = arr.find(p => p.fwds_id === pid);
-      return years?.length == 1 && r?.percentage;
-    };
-
-    const getStir = function () {
-      return [17,18,27];
+      return years?.length == 1 && [1,3,10,14,18,20].includes(pid);
     };
 
     const isStir = function (pid) {
-      return getStir().includes(pid);
+      return [17,18,27].includes(pid);
     };
 
     const isRollingProd = function (pid) {
@@ -201,47 +191,9 @@ const products = (
       });
     };
 
-    const getValidSPS = function () {
-      return [
-        [0,0.25],[0.08333333333333333,0.25],[0.16666666666666666,0.25],[0.25,0.25],[0.3333333333333333,0.25],[0.4166666666666667,0.25],
-        [0.5,0.25],[0.5833333333333334,0.25],[0.6666666666666666,0.25],[0.75,0.25],[0.8333333333333334,0.25],[0.9166666666666666,0.25],
-        [1,0.25],[1.0833333333333333,0.25],[1.1666666666666667,0.25],[1.25,0.25],[1.3333333333333333,0.25],[1.4166666666666667,0.25],
-        [1.5,0.25],[1.5833333333333333,0.25],[1.6666666666666667,0.25],[1.75,0.25],[1.8333333333333333,0.25],[1.9166666666666667,0.25],[2,0.25],
-        [0,0.5],[0.08333333333333333,0.5],[0.16666666666666666,0.5],[0.25,0.5],[0.3333333333333333,0.5],[0.4166666666666667,0.5],
-        [0.5,0.5],[0.5833333333333334,0.5],[0.6666666666666666,0.5],[0.75,0.5],[0.8333333333333334,0.5],[0.9166666666666666,0.5],
-        [1,0.5],[1.0833333333333333,0.5],[1.1666666666666667,0.5],[1.25,0.5],[1.3333333333333333,0.5],[1.4166666666666667,0.5],
-        [1.5,0.5],[1.5833333333333333,0.5],[1.6666666666666667,0.5],[1.75,0.5],[1.8333333333333333,0.5],[1.9166666666666667,0.5],[2,0.5]
-      ];
-    };
-
-    const productHeading = function (product_id) {
-      const arr = get(products);
-      const p = arr.find(p => p.product_id === product_id);
-      switch(product_id) {
-        case -1:
-        case 0:
-          return "";
-        case 1:
-          return "EFP | IRS";
-        case 18:
-          return "STIR";
-        case 29:
-          return "SOFR SPREAD | IRS SWAPS";
-        case 100:
-          return "Swaption";
-        case 101:
-          return "Forwards";
-        case 102:
-          return "FX Options";
-        default:
-          return (typeof p === 'undefined') ? "" : p.product;
-      }
-    };
-
     return {
       subscribe,
       set: mySet,
-      getCurrentProds,
       name,
       currency,
       ids,
@@ -256,12 +208,9 @@ const products = (
       prev,
       getFwdProducts,
       isPercentageProd,
-      getStir,
       isStir,
       isRollingProd,
       isFuturesProd,
-      getValidSPS,
-      productHeading,
     };
   }());
 

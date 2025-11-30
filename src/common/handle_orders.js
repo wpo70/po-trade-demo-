@@ -48,6 +48,7 @@ export function insertOrders (received_orders) {
           order_id: order.order_id,
           product_id: order.product_id,
           firm: false,
+          confirmed: false
         }, true);
         let tr = trade_reviews.containsOrder(order.order_id);
         if (tr) {
@@ -258,6 +259,12 @@ function updateOrder(updated_order) {
     return;
   }
 
+  // FIXME: currently a hacky way to do leftover orders to refresh tradess view
+  if (updated_keys.includes('volume') && updated_keys.includes('confirmed')) {
+    deleteAndReinsert();
+    return;
+  }
+
   // Handle cases that can update values directly
 
   if (updated_keys.includes('volume')) {
@@ -268,4 +275,7 @@ function updateOrder(updated_order) {
     updateValue('broker_id');
   }
 
+  if (updated_keys.includes('confirmed')) {
+    updateValue('confirmed');
+  }
 }

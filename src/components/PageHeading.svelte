@@ -1,9 +1,8 @@
 <script>
 'use strict';
 
-import config from "../../config.json";
-
 // Import Carbon Components Svelte components.
+
 import {
   Header,
   HeaderNav,
@@ -24,8 +23,8 @@ import {
   SideNavMenuItem,
   SideNavLink,
   SideNavDivider,
+  Modal,
   Checkbox,
-  Button,
 } from 'carbon-components-svelte';
 import Filter from 'carbon-icons-svelte/lib/Filter.svelte';
 import FilterEdit from 'carbon-icons-svelte/lib/FilterEdit.svelte';
@@ -33,54 +32,48 @@ import ConnectionSignal from 'carbon-icons-svelte/lib/ConnectionSignal.svelte';
 import ConnectionSignalOff from 'carbon-icons-svelte/lib/ConnectionSignalOff.svelte';
 import TextLongParagraph from "carbon-icons-svelte/lib/TextLongParagraph.svelte";
 import SkillLevelAdvanced from "carbon-icons-svelte/lib/SkillLevelAdvanced.svelte";
-import SkillLevelBasic from "carbon-icons-svelte/lib/SkillLevelBasic.svelte";
 import SkillLevel from "carbon-icons-svelte/lib/SkillLevel.svelte";
 import IbmCloudPakMantaAutomatedDataLineage from "carbon-icons-svelte/lib/IbmCloudPakMantaAutomatedDataLineage.svelte";
 import DataTable from "carbon-icons-svelte/lib/DataTable.svelte";
 import IdManagement from "carbon-icons-svelte/lib/IdManagement.svelte";
 import ChartCustom from "carbon-icons-svelte/lib/ChartCustom.svelte";
 import DashboardReference from "carbon-icons-svelte/lib/DashboardReference.svelte";
-import Restart from "carbon-icons-svelte/lib/Restart.svelte";
 
 import { onMount, tick } from 'svelte';
 import { fade } from 'svelte/transition';
 
 // Import the necessary components.
 
-import UnclosableModal from "./Utility/UnclosableModal.svelte";
 import Trading from './Trading.svelte';
 import Swaption from './Swaption/Swaption.svelte';
 import QuickOrderForm from './QuickOrderForm.svelte';
 import AccountCard from './NavBar/AccountCard.svelte';
+import MenuModal from './MenuModal.svelte';
 import TraderManagement from './TraderManagement/TraderManagement.svelte';
 import History from './History/History.svelte';
 import BrokerManagement from './BrokerManagement.svelte';
-import DataConnections from './NavBar/DataConnections.svelte';
 import WhiteBoardFilters from './NavBar/WhiteBoardFilters.svelte';
 import ReviewRequestNotification from './ReviewRequestNotification.svelte';
 import Calculator from './Calculation/Calculator.svelte';
 import WhiteboardCustomPage from './WhiteboardCustomPage.svelte';
 import Confo from './Confo.svelte';
-import Toasts from './Toasts.svelte';
-
 // Import the writable stores that hold data from the server.
 
 import currency_state from '../stores/currency_state.js';
 import user from '../stores/user.js';
 import brokers from '../stores/brokers.js';
 import products from '../stores/products.js';
-import active_product, { main_content, view } from '../stores/active_product.js';
+import active_product from '../stores/active_product.js';
 import custom_whiteboards, { selected_custom_wb } from '../stores/custom_whiteboards';
-import prices from "../stores/prices";
+import prices from '../stores/prices';
 import filters from '../stores/filters';
 import websocket from '../common/websocket';
 import data_collection_settings from '../stores/data_collection_settings';
 import confos from '../stores/confos';
-import { markitwire, websocket as ws_store } from '../stores/connections';
-import { toasts } from '../stores/toast';
+import markitwire_connected from '../stores/markitwire_connected';
+import AccountSettings from './NavBar/AccountSettings.svelte';
+import config from "../../config.json";
 
-let admin_warning = false;
-let acceptAdminResponsibility = false;
 let permission;
 $: {let b = $brokers; permission = user.getPermission();}
 
@@ -90,31 +83,118 @@ document.addEventListener("mousedown", ({target}) => {
     isSideNavOpen = false;
   }
 });
-$: can_sidenav = ["custom-whiteboards", "trading", "swaption"].includes($main_content);
+$: can_sidenav = ["custom-whiteboards", "trading", "swaption"].includes(main_content);
 
-let showIndicators = false;
+// Add default currency AUD
+let currency_type;
+let isDisabled = false;
+let current_products;
 let confoMenuOpen = false;
-let is_switcher_open = false; // The navigation switcher
-let account_card_open = false;
-let conn_popover_open = false;
 let showFilters = false;
 $: showFilters = false && $active_product;
-$: filterDefault = $filters && filters.isDefault($active_product, $selected_custom_wb);
+let filterDefault;
+$: { let j = $filters; filterDefault = filters.isDefault($active_product, $selected_custom_wb); }
 
-$: current_products = $products && products.getCurrentProds();
+$: if (typeof currency_type !== 'undefined') {
+        getsync(currency_type);
+      } else {
+      currency_type ="AUD";
+    }
 
-async function updateCurr(curr) {
-  const default_prod = currency_state.set(curr);
-  current_products = products.getCurrentProds();
-  if (default_prod && default_prod !== -1) {
-    removeTabHighlight();
-    lastPage.active = default_prod;
-    const label = navAria(default_prod);
-    addClassList(label);
-    lastPage.label = label;
-  }
-  websocket.getCurrency(curr);
+$: setProducts($products, $currency_state);
+
+function setProducts() {
+  let filter = [1, 2, 17, 18, 20, 27, 28, 29];
+  filter.push.apply(filter, products.getFwdProducts());
+  // Remove any combined products
+  current_products = $products.filter(p => { return p.currency_code === currency_type && !filter.includes(p.product_id) });
 }
+// Set timeout between get_quotes table and the MID/DURR titles
+  // There is a lagging time bwteen Switching titles of Indicators table and getting a quote table
+    // It results the title of indicator switching faster than the data or content of the table
+      // The reason is WS send message currency to get data from quote table and Update Store Table $currency_state
+
+
+async function getsync(currency_type) {
+  setProducts();
+  currency_state._set(currency_type, false);
+
+  // Set default when tab switching
+    // If tab is selected at NZD, active_product default will be '10' or IRS
+      // If tab is selected at AUD, active_product default will be '1' or IRS
+
+  if ( currency_type === 'NZD' ) {
+    if (main_content != "custom-whiteboards") {
+      $active_product = 10; lastPage = {active: {product_id:10}, label: "irs__page", main: "trading"};
+    } else {
+      removeTabHighlight();
+    }
+    if ($selected_custom_wb.board_id !== -1) {
+      custom_whiteboards.setToLive();
+    }
+  }
+  if ( currency_type === 'AUD' ) {
+    if (main_content != "custom-whiteboards") {
+      $active_product = 1; lastPage = {active: {product_id:1}, label: "efp_irs__page", main: "trading"};
+    } else {
+      removeTabHighlight();
+    }
+    if ($selected_custom_wb.board_id !== -1) {
+      custom_whiteboards.setToLive();
+    }
+  }
+  if ( currency_type === 'USD' ) {
+    if (main_content != "custom-whiteboards") {
+      $active_product = 29; lastPage = {active: {product_id:29}, label: "sofr_irs__page", main: "trading"};
+    } else {
+      removeTabHighlight();
+    }
+  }
+
+  websocket.getCurrency(currency_type);
+}
+
+// Whether to show the indicators side bar.
+
+let showIndicators = false;
+function handleShowIndicatorsClick() {
+  showIndicators = !showIndicators;
+}
+
+// The active_tab is the product object that the Tabs component binds to.
+// Update the active_product from the active_tab.
+
+let active_tab = {product_id: -1};
+$: if (typeof active_tab !== 'undefined') {
+  $active_product = active_tab.product_id;
+  if ([0, -1, 100, 101, 102, 103].indexOf(active_tab.product_id) < 0) prices.sort(active_tab.product_id);
+}
+/**
+ * Main_content = 'trading' | 'swaption' | 'history' | 'trader-management' | 'custom-whiteboards' | 'broker-management'
+ * view =  | 'orders' | 'trades' | 'whiteboard' | 'FxOptions' | 'fwds' | 'swaption' | 'history" | 'custom-whiteboards'
+ * 
+ * Default Home Page
+ * lastPage = {active: {product_id:-1}, label: "custom-whiteboards__page", main: "custom-whiteboards", view: "custom-whiteboards"}
+ * 
+ * While main_content, view, active_tab maintains as a key towards a targeted page, 
+ * the last page stores the previous page user had accessed
+ * active: {product_id: -1}  -> custom-whiteboards
+ *                      101  -> FWDS
+ *                      100  -> Swaptions
+ *                      102  -> FXOptions
+*/
+
+let main_content = "";
+
+// This is the view to show, whiteboard or orders.
+
+let view = 'custom-whiteboards';
+
+// The navigation switcher
+
+let is_switcher_open = false;
+
+let account_card_open = false;
 
 // Menu Modal
 let showMenus = false;
@@ -123,6 +203,7 @@ function menuHandler () {
 };
 
 // Toast notification displayer
+
 let notification = null;
 $: {
   if ($data_collection_settings.gateways.length == 0) {
@@ -133,51 +214,76 @@ $: {
     }
   }
 }
+
 function resetNotification() {
   notification = null;
 }
 
+// The gateway connection status popover
+
+let is_gw_conn_popover_open = false;
+function showGWConnPopover() {
+  is_gw_conn_popover_open = true;
+}
+function hideGWConnPopover() {
+  is_gw_conn_popover_open = false;
+}
+
+//MarkitWire Signal Popover
+let is_markitwire_popover_open = false;
+function showMarkitwirePopover(){
+  is_markitwire_popover_open = true;
+}
+function hideMarkitwirePopover(){
+  is_markitwire_popover_open = false;
+}
+
 // The quick order form
+
 let quick_order_form;
 function quickOrder() {
   quick_order_form.open();
   is_switcher_open = false;
 }
 
-function handleServerError(event) {  // The order form has resulted in a server error.
+function handleServerError(event) {
+  // The order form has resulted in a server error.
+
   server_error = event.detail;
   mySnackbar.open();
 }
 
 function handleKeyPress(event) {
   let key = event.key.toLowerCase();
-  if($main_content !== 'trading' &&
-      $main_content !== 'trader-management' &&
-      $main_content !== 'swaption' &&
-      $main_content !== 'custom-whiteboards') {
+
+  if(main_content !== 'trading' &&
+      main_content !== 'trader-management' &&
+      main_content !== 'swaption' &&
+      main_content !== 'custom-whiteboards') {
     return;
   }
+
   switch (key) {
     case 'w':
-      if ($view != 'fwds' && $view != 'fx-options' && $view != 'swaption' && $view != "history" &&  $view != 'whiteboard' ) { 
+      if (view != 'fwds' && view != 'fxOption' && view != 'swaption' && view != "history" && view != 'whiteboard' ) { 
         handleViewSwitchingKey('whiteboard');
         showIndicators = false; 
       }
       break;
     case 'o':
-      if ($view != 'fwds' && $view != 'fx-options' && $view != 'swaption' && $view != "history" && $view != 'orders' ) { 
+      if (view != 'fwds' && view != 'fxOption' && view != 'swaption' && view != "history" && view != 'orders' ) { 
         handleViewSwitchingKey('orders');
         showIndicators = true; 
       }
       break;
     case 't':
-      if ($view != 'fwds' && $view != 'fx-options' && $view != 'swaption' && $view != "history" && $view != 'trades' ) { 
+      if (view != 'fwds' && view != 'fxOption' && view != 'swaption' && view != "history" && view != 'trades' ) { 
         handleViewSwitchingKey('trades');
         showIndicators = true;
       }
       break;
     case 'q':
-      if ($main_content === 'trading' && $view === 'whiteboard') quickOrder();
+      if (main_content === 'trading' && view === 'whiteboard') quickOrder();
       break;
     case 'i':
       showIndicators = !showIndicators;
@@ -185,7 +291,7 @@ function handleKeyPress(event) {
     case 'l':
       removeTabHighlight();
       custom_whiteboards.setToLive();
-      storeLastAndUpdate(-1, "custom-whiteboards__page", "custom-whiteboards", "custom-whiteboards");
+      storeLastAndUpdate({product_id:-1}, "custom-whiteboards__page", "custom-whiteboards", "custom-whiteboards");
       break;
     // case 'z':
     //   menuHandler();
@@ -203,12 +309,7 @@ function handleKeyPress(event) {
   }
 }
 
-onMount(() => {
-  removeTabHighlight();
-  if ($active_product > 0) { addClassList(navAria($active_product)); prices.sort($active_product); }
-  if ($view == "orders") { showIndicators = true; }
-  if ($user.accesslevel === 999 && config.env == 'prod') { admin_warning = true; }
-});
+onMount(viewCustomWBs);
 
 function removeTabHighlight () {
   const current_pages = document.querySelectorAll(`a[aria-current="page"]`);
@@ -222,69 +323,51 @@ function addClassList(ariaLabel) {
   if (element) { element.setAttribute("aria-current", `page`); }
 }
 
-function navAria(p) {
-  if (typeof +p != "number") {
-    return p+"__page";
-  }
-  const pid = +p;
-  switch (pid) {
-    case 1:
-      return "efp_irs__page";
-    case 18:
-      return "stir__page";
-    case 29:
-      return "sofr_irs__page";
-    case 100:
-      return "swaption__page";
-    case 101:
-      return "forwards__page";
-    case 102:
-      return "fx_options__page";
-    default:
-      return products.name(pid)+"__page";
-  }
-}
-
-let lastPage = {active: {product_id:$active_product}, label: navAria($active_product), main: $main_content, view: $view}; // Default page to revert to, until another page is selected
+let lastPage = {active: {product_id:-1}, label: "custom-whiteboards__page", main: "custom-whiteboards", view: "custom-whiteboards"}; // Default page to revert to, until another page is selected
 function storeLastAndUpdate(product, ariaLabel, main = "trading", _view = "whiteboard", force_view = false) {
   if (!product) { // given no parameters, will default to first product of current currency selection
-    if ($currency_state == "AUD") {
-      product = 1;
-      ariaLabel = navAria(1);
-    } else if ($currency_state == "USD") {
-      product = 29;
-      ariaLabel = navAria(29);
+    if (currency_state.get_cur() == "AUD") {
+      product = {product_id:1};
+      ariaLabel = "efp_irs__page";
+    } else if (currency_state.get_cur() == "USD") {
+      product = {product_id: 29};
+      ariaLabel = "sofr_irs__page";
     } else {
-      product = current_products[0].product_id;
-      ariaLabel = navAria(current_products[0].product_id);
+      product = current_products[0];
+      ariaLabel = current_products[0].product+"__page";
     }
   }
-  $active_product = product;
-  lastPage.active = structuredClone(product);
+  active_tab = product;
+  lastPage.active = structuredClone(active_tab);
   lastPage.label = ariaLabel;
-  _view = force_view || !(main == "trading" && ["whiteboard", "trades", "orders"].includes($view)) ? _view : $view;
-  $view = _view;
+  _view = force_view || !(main == "trading" && ["whiteboard", "trades", "orders"].includes(view)) ? _view : view;
+  view = _view;
   lastPage.view = _view;
-  $main_content = main;
+  main_content = main;
   lastPage.main = main;
 }
 
 function applyLastProduct() {
-  $active_product = lastPage.active;
+  active_tab = lastPage.active;
   addClassList(lastPage.label);
-  $main_content = lastPage.main;
-  $view = lastPage.view;
+  main_content = lastPage.main;
+  view = lastPage.view;
 }
 
 function viewCustomWBs(page) {
   removeTabHighlight();
   if (page == "custom") { custom_whiteboards.setToCustom(); }
   else if (page === "live") { custom_whiteboards.setToLive(); }
-  storeLastAndUpdate(-1, "custom-whiteboards__page", "custom-whiteboards", "custom-whiteboards");
+  storeLastAndUpdate({product_id:-1}, "custom-whiteboards__page", "custom-whiteboards", "custom-whiteboards");
 }
 
 function handleViewSwitchingKey(_view) {
-  if ($main_content != "trading") {
+  // If currently on RBA OIS, reset to default product before switching
+  if (view === 'rba-ois' || active_tab.product_id === 103) {
+    storeLastAndUpdate({product_id: 1}, "efp_irs__page", "trading", _view, true);
+    return;
+  }
+  if (main_content != "trading") {
     if (lastPage.main == "trading") {
       applyLastProduct();
     } else {
@@ -292,45 +375,29 @@ function handleViewSwitchingKey(_view) {
     }
   }
   lastPage.view = _view;
-  $view = _view ?? "whiteboard";
+  view = _view ?? "whiteboard";
 }
 
 async function goToTradeReview (e) {
-  let pid;
-  switch (e.detail.pid) {
-    case 2:
-      pid = 1;
-      break;
-    case 17: case 27:
-      pid = 18;
-      break;
-    case 28:
-      pid = 29;
-      break;
-    default:
-      pid = products.nonFwd(e.detail.pid);
-      break;
-  }
-  updateCurr(products.currency(pid));
+  let pid = e.detail.pid;
+  if (pid == 17 || pid == 27) pid = 18;
+  if (pid == 2) pid = 1;
+  if (pid == 28) pid = 29;
+  currency_type = products.currency(pid);
+  currency_state._set(products.currency(pid), false);
+  active_product.set(products.nonFwd(pid)); 
+  setProducts();
   removeTabHighlight();
   await tick();
-  storeLastAndUpdate(pid, products.name(pid)+"__page", "trading", "trades", true);
+  storeLastAndUpdate({product_id: pid}, products.name(pid)+"__page", "trading", "trades", true);
+  websocket.getCurrency(currency_type);
 }
 
 $: tab_title = () => {
-  switch ($active_product) {
-    case 0:
-    case null:
-    case undefined:
-      return "";
+  switch (active_tab?.product_id) {
     case -1:
-      if ($selected_custom_wb?.board_id == -1) {
-        return " - Live Orders"
-      } else if ($selected_custom_wb?.board_id) {
-        return ` - Custom: ${$selected_custom_wb.name}`;
-      } else {
-        return "";
-      }
+    case 0:
+      return "";
     case 1:
       return "- EFP | IRS";
     case 18:
@@ -364,6 +431,7 @@ $: tab_title = () => {
         currencyOpen = false;
         is_switcher_open = false;
         showFilters = false;
+        if (confoMenuOpen == false) confos.purge();
         break;
       case "switcher":
         account_card_open = false;
@@ -386,145 +454,206 @@ $: tab_title = () => {
     }
     if (button != "currency") document.activeElement.blur();
   }
+
+let IsProductButtonOpen = false;
+
+let currentuser = brokers.get(user.get());
+let open = false;
+
+onMount(() => {
+  if(currentuser.accesslevel ===999 && config.env == 'prod') open = true;
+});
+
+let acceptAdminResponsibility = false;
+
 </script>
-
-
+<div class="login_warning">
+  <Modal
+    modalHeading="Logged in as admin"
+    primaryButtonText="Accept Responsibility"
+    secondaryButtonText="Logout"
+    size='sx'
+    bind:open
+    danger=true
+    on:click:button--secondary={() => {user.logout(); websocket.handlerLogout();}}
+    on:click:button--primary= {() => {open=false;}}
+    primaryButtonDisabled={!acceptAdminResponsibility}
+    preventCloseOnClickOutside
+  >
+    <div style="text-align: center; display: flex; flex-direction: column; gap: 20px;">
+      <p style="padding: 0;">You are logged in as an admin with a high access level.</p>
+      <div style="display: flex; gap: 5px; align-items: center;">
+        <Checkbox bind:checked={acceptAdminResponsibility}/>
+        <p style="padding: 0;" on:click={() => {acceptAdminResponsibility = !acceptAdminResponsibility;}}>I understand that this grants me extra permissions that may be dangerous.</p>
+      </div>
+    </div>
+  </Modal>
+</div>
 <!-- Handle shortcut keys -->
 <svelte:window on:keypress={handleKeyPress} />
 
 <svelte:head>
-  <title>PO Trade {tab_title()}</title>
+  <title>Rate Edge OMS {tab_title()}</title>
 </svelte:head>
-
-<UnclosableModal
-  modalHeading="Logged in as Admin"
-  primaryButtonText="Accept Responsibility"
-  secondaryButtonText="Logout"
-  bind:open={admin_warning}
-  danger=true
-  on:click:button--secondary={() => {user.logout(); websocket.handlerLogout();}}
-  on:click:button--primary= {() => {admin_warning = false;}}
-  primaryButtonDisabled={!acceptAdminResponsibility}
-  >
-  <div style="text-align: center; display: flex; flex-direction: column; gap: 20px;">
-    <p style="padding: 0;">You are logged in as an admin with an elevated access level.</p>
-    <div style="display: flex; gap: 5px; align-items: center;">
-      <Checkbox bind:checked={acceptAdminResponsibility}/>
-      <p style="padding: 0;" on:click={() => {acceptAdminResponsibility = !acceptAdminResponsibility;}}>I understand that this grants me extra permissions that may be dangerous.</p>
-    </div>
-  </div>
-</UnclosableModal>
-
-<UnclosableModal
-  modalHeading="Connection Closed"
-  open={!$ws_store}
-  passiveModal
-  >
-  <div style="display:flex; flex-direction:column; align-items:center; gap:50px;">
-    <p style="padding: 0;">Your connection to the POTrade server has expired. Please refresh your page.</p>
-    <Button style="width:200px;" autofocus icon={Restart} on:click={()=>window.location.reload()}>Refresh</Button>
-  </div>
-</UnclosableModal>
+  
+<!-- svelte-ignore a11y-no-static-element-interactions -->
+<!-- svelte-ignore missing-declaration -->      
+<!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+<!-- svelte-ignore a11y-click-events-have-key-events -->
 
 <Header bind:isSideNavOpen {can_sidenav} expansionBreakpoint={1612}>
   <button class="bx--btn bx--btn--sm bx--btn--ghost title-btn" ariaLabel="custom-whiteboards__page"
-    class:custom-wbs-selected={$main_content == "custom-whiteboards"}
-    on:click={() => { if ($main_content != "custom-whiteboards") { viewCustomWBs(); }}}
+    class:custom-wbs-selected={main_content == "custom-whiteboards"}
+    on:click={() => { if (main_content != "custom-whiteboards") { viewCustomWBs(); }}}
     >
-    <h5>PO&nbsp;Trade<code class="version">v{config.version}</code></h5>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" width="130" height="32">
+      <defs>
+        <linearGradient id="hdr-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#475569"/>
+          <stop offset="100%" style="stop-color:#cbd5e1"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(5, 8)">
+        <path d="M 3 28 Q 12 25, 20 16 Q 28 8, 35 4" 
+              fill="none" stroke="url(#hdr-grad)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="35" cy="4" r="3.5" fill="#ef4444"/>
+        <line x1="3" y1="35" x2="35" y2="35" stroke="#475569" stroke-width="2"/>
+      </g>
+      <text x="50" y="32" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
+            font-size="26" font-weight="600" letter-spacing="0.5">
+        <tspan fill="#f1f5f9">Rate</tspan><tspan fill="#ef4444">Edge</tspan>
+      </text>
+    </svg>
   </button>
-  
-  <!-- Connection Indicators -->
+
+  <!-- This isn't connected to anything - seems unneeded
+  <div slot="skip-to-content">
+    <SkipToContent />
+  </div>
+  -->
+
+  <!-- Gateway signal -->
   <div
-    on:mouseenter={() => {conn_popover_open = true;}}
-    on:mouseleave={() => {conn_popover_open = false;}}
-    style="position:relative; display:flex; align-items:center; gap:20px; padding:5px 0;"
-    >
-    {#if $data_collection_settings.gateways.length && $data_collection_settings.gateways.some(gw => gw.blp_connected) }
-      <ConnectionSignal size={24} style="position: relative; color: var(--cds-support-02);"/>
-    {:else if $data_collection_settings.gateways.length > 0}
-      <ConnectionSignalOff size={24} style="position: relative; color: var(--cds-support-03);"/>
+    on:mouseenter={showGWConnPopover}
+    on:mouseleave={hideGWConnPopover}
+    style:position="relative"
+  >
+    {#if $data_collection_settings.gateways.length > 0}
+      <ConnectionSignal
+        size={24}
+        class="gateway-connected-icon"
+      />
     {:else}
-      <ConnectionSignalOff size={24} style="position: relative; color: var(--cds-support-01);"/>
+      <ConnectionSignalOff
+        size={24}
+        class="gateway-disconnected-icon"
+      />
     {/if}
-    <span>
-      {#if $markitwire.connected && $markitwire.active} <!-- App connected, Markitwire logged in -->
-        <SkillLevelAdvanced size={24} style="color:var(--cds-support-02);"/>
-        <div style="font-size: 70%; color:var(--cds-support-02)">
-          {$markitwire.env?.toUpperCase()}
-        </div>
-      {:else if $markitwire.connected && !$markitwire.active} <!-- App connected, Markitwire logged out -->
-        <SkillLevelBasic size={24} style="color:var(--cds-support-03);"/>
-        <div style="font-size:70%; color:var(--cds-support-03)">
-          {$markitwire.env?.toUpperCase()}
-        </div>
-      {:else}
-        <SkillLevel size={24} style="color:var(--cds-support-01);"/>
-        <div style="font-size:70%; color:var(--cds-support-01)">
-          {$markitwire.env?.toUpperCase()}
-        </div>
-      {/if}
-    </span>
-    <Popover align="bottom" bind:open={conn_popover_open}>
-      <DataConnections summary style="padding:15px; width:240px;"/>
+
+    <Popover
+      align="bottom-center"
+      bind:open={is_gw_conn_popover_open}
+    >
+      <div style="padding: var(--cds-spacing-05)">{$data_collection_settings.gateways.length > 0 ? 'A' : 'No'} gateway is connected</div>
     </Popover>
   </div>
-  <!-- End Connection Indicators -->
 
-{#if $main_content === 'trading' || $main_content === 'swaption' || $main_content === 'custom-whiteboards'}
+  <!-- Markitwire signal -->
+  <div
+    on:mouseenter={showMarkitwirePopover}
+    on:mouseleave={hideMarkitwirePopover}
+    style:position='relative'
+  >
+    <div style="margin-left: 20px;">
+      {#if $markitwire_connected.connected && $markitwire_connected.active}
+      <!-- App connected, Markitwire logged in -->
+      <SkillLevelAdvanced
+        size={24}
+        class="gateway-connected-icon"
+      /><div style="font-size: 70%; color:var(--cds-support-02)">{$markitwire_connected.env?.toUpperCase()}</div>
+      {:else if $markitwire_connected.connected && !$markitwire_connected.active}
+      <!-- App connected, Markitwire logged out -->
+        <SkillLevel
+          size={24}
+          class="gateway-disconnected-icon"
+      /><div style="font-size:70%; color:var(--cds-support-02)" >{$markitwire_connected.env?.toUpperCase()}</div>
+      {:else}
+      <!-- App not connected -->
+      <SkillLevel
+        size={24}
+        class="gateway-disconnected-icon"
+      /><div style="font-size:70%" class="gateway-disconnected-icon">{$markitwire_connected.env?.toUpperCase()}</div>
+      {/if}
+    </div>
+    <Popover
+    align="bottom-center"
+    bind:open={is_markitwire_popover_open}
+    >
+      <div style="padding: var(--cds-spacing-05)">{$markitwire_connected.active ? '' : 'No'} MarkitWire connected</div>
+    </Popover>
+  </div>
+  <!-- End of Signals -->
+
+{#if main_content === 'trading' || main_content === 'swaption' || main_content === 'custom-whiteboards'}
   <HeaderNav style="margin-left: 16px;">
-    <!-- Update the navigation bar for product if the currency seletecd is NZD -->
-    <!-- EFP rate is not available on NZD -->
-    <!-- For AUD, available products are IRS, EFP, OIS, 3v1, 6v3, BOB, BBSW/LIBOR, BBSW/SOFR, AONIA/SOFR [1,2,3,4,5,6,7,8,9] -->
-    <!-- For NZD, available products are IRS, OIS, 3v1, 6v3, BOB, BKBM/LIBOR, BKBM/SOFR [10,11,12,13,14,15,16] -->
-    {#if $currency_state == "AUD"}
-      <!-- TAB EFP | IRS -->
+        <!-- Update the navigation bar for product if the currency seletecd is NZD -->
+        <!-- EFP rate is not available on NZD -->
+        <!-- For AUD, available products are IRS, EFP, OIS, 3v1, 6v3, BOB, BBSW/LIBOR, BBSW/SOFR, AONIA/SOFR [1,2,3,4,5,6,7,8,9] -->
+        <!-- For NZD, available products are IRS, OIS, 3v1, 6v3, BOB, BKBM/LIBOR, BKBM/SOFR [10,11,12,13,14,15,16] -->
+    {#if $currency_state.currency == "AUD"}
+        
+    <!-- TAB EFP | IRS -->
       <HeaderNavItem aria-label="efp_irs__page" text="EFP | IRS" style="cursor:pointer"
-        on:click={() => {if ($active_product != 1) {storeLastAndUpdate(1, "efp_irs__page");}}}
-        isSelected={$active_product === 1}
-      />
+      on:click={() => {
+        if (active_tab?.product_id != 1) {
+          removeTabHighlight(); storeLastAndUpdate({product_id: 1}, "efp_irs__page"); 
+        } else document.activeElement.blur();
+        }}
+        isSelected={$active_product === 1} />
     {/if}
 
-    {#if $currency_state == "USD"}        
+    {#if $currency_state.currency == "USD"}        
     <!-- TAB SOFR SPREAD | IRS SWAPS -->
       <HeaderNavItem aria-label="sofr_irs__page" text="SOFR SPREAD | IRS SWAPS" style="cursor:pointer"
-        on:click={() => {if ($active_product != 29) {storeLastAndUpdate(29, "sofr_irs__page");}}}
-        isSelected={$active_product === 29}
-      />
+      on:click={() => {
+        if (active_tab?.product_id != 29) {
+          removeTabHighlight(); storeLastAndUpdate({product_id: 29}, "sofr_irs__page"); 
+        } else document.activeElement.blur();
+        }}
+        isSelected={$active_product === 29} />
     {/if}
 
     {#each current_products as product}
-      <!-- TAB OTHER MAIN PRODUCTS -->
+       <!-- TAB OTHER PRODUCTS -->
       <HeaderNavItem   
-        aria-label={product.product+"__page"}
-        text={product.product}
-        style="cursor:pointer"
-        on:click={() => {if ($active_product != product.product_id) {storeLastAndUpdate(product.product_id, product.product+"__page");}}}
-        isSelected={$active_product === product.product_id}
-      />
+      aria-label={product.product+"__page"}
+      text={product.product}
+      style="cursor:pointer"
+      on:click={() => {if (active_tab?.product_id != product.product_id) {removeTabHighlight(); storeLastAndUpdate(product, product.product+"__page"); } else document.activeElement.blur();}}
+      isSelected={$active_product === product.product_id}/>
     {/each}
 
-    {#if $currency_state == "AUD"}
+    {#if $currency_state.currency == "AUD"}
       <!-- TAB STIR -->
       <HeaderNavItem aria-label="stir__page" text="STIR" style="cursor:pointer"
-        on:click={() => {if ($active_product != 18) {storeLastAndUpdate(18, "stir__page");}}}
-        isSelected={$active_product === 18}
-      />
-      <!-- TAB SWAPTION -->
-      <HeaderNavItem aria-label="swaption__page" text="SWAPTION" style="cursor:pointer" 
-        on:click={() => {storeLastAndUpdate(100, "swaption__page", "swaption", "swaption");}}
-        isSelected={$active_product == 100}
-      />
+        on:click={() => {if (active_tab?.product_id != 18) {removeTabHighlight(); storeLastAndUpdate({product_id: 18}, "stir__page");} else document.activeElement.blur();}}
+        isSelected={$active_product === 18} />
+      <!-- TAB RBA OIS -->
+      <HeaderNavItem aria-label="rba_ois__page" text="RBA OIS" style="cursor:pointer" 
+        on:click={() => {addClassList("rba_ois__page"); storeLastAndUpdate({product_id: 103}, "rba_ois__page", "trading", "rba-ois", true)}}
+        isSelected={active_tab.product_id == 103}/>
+      <!-- TAB SWAPTION - DISABLED FOR DEMO -->
+      <!-- <HeaderNavItem aria-label="swaption__page" text="SWAPTION" style="cursor:pointer" 
+        on:click={() => {addClassList("swaption__page"); storeLastAndUpdate({product_id: 100}, "swaption__page", "swaption", "swaption")}}
+        isSelected={active_tab.product_id == 100}/> -->
       <!-- TAB FWDS -->
       <HeaderNavItem aria-label="forwards__page" text="FORWARDS" style="cursor:pointer" 
-        on:click={() => {storeLastAndUpdate(101, "forwards__page", "trading", "fwds", true);}}
-        isSelected={$active_product == 101}
-      />
+        on:click={() => {addClassList("forwards__page"); storeLastAndUpdate({product_id: 101}, "forwards__page", "trading", "fwds", true)}}
+        isSelected={active_tab.product_id == 101}/>
       <!-- TAB FX OPTIONS-->
       <HeaderNavItem aria-label="fx_options__page" text="FX OPTIONS" style="cursor:pointer" 
-        on:click={() => {storeLastAndUpdate(102, "fx_options__page", "trading", "fx-options", true);}}
-        isSelected={$active_product == 102}
-      />
+        on:click={() => {addClassList("fx_options__page"); storeLastAndUpdate({product_id: 102}, "fx_options__page", "trading", "fxOption", true)}}
+        isSelected={active_tab.product_id == 102}/>
     {/if}
   </HeaderNav>
 {/if}
@@ -549,10 +678,10 @@ $: tab_title = () => {
       {/if}
     {/if}
 
-    {#if $main_content == 'custom-whiteboards' || $main_content === 'trading' && $view === 'whiteboard'}
-      <HeaderGlobalAction
-        aria-label="Filter Whiteboard"
-        on:click={() => {openClose("filter")}}
+      {#if main_content == 'custom-whiteboards' || main_content === 'trading' && view === 'whiteboard'}
+        <HeaderGlobalAction
+          aria-label="Filter Whiteboard"
+          on:click={() => {openClose("filter")}}
         >
           {#if filterDefault}
             <Filter style="fill:white; margin-right:2px" size=22/>
@@ -565,65 +694,65 @@ $: tab_title = () => {
       
     
     <!-- Currency -->
-    {#if ['custom-whiteboards', 'trading', 'swaption'].includes($main_content)}
-    <div class="currency_header_action">
-      <HeaderGlobalAction aria-label="currency" on:click={()=>{openClose("currency");}}>
-        <OverflowMenu id="currency-overflow-menu">
-          <div slot="menu" style="color:white; font-weight:bold; font-size:small; display:flex; align-items:center; justify-content:center;">
-            <img src={`./build/flags/${$currency_state}.svg`} style="margin-right:0.5rem;"/>
-            {$currency_state}
-          </div>
-          {#each currency_state.getAllCurrencies() as curr}
-            <OverflowMenuItem
-              hasDivider
-              disabled={!["AUD", "NZD", "USD"].includes(curr)}
-              id={curr}
-              on:click={() => {updateCurr(curr);}}
-              primaryFocus={$currency_state == curr}
-              >
-              <div style="display:flex; align-items:center;">
-                <img src={`./build/flags/${curr}.svg`} height="20px" style="margin-right:1rem;"/>
-                {currency_state.symbolString(curr)}
-              </div>
-            </OverflowMenuItem>
-          {/each}
-        </OverflowMenu>
-      </HeaderGlobalAction>
-    </div>
-    {/if}
+    <!-- Setting the Currency, Support: AUD, NZD -->
+      {#if ['custom-whiteboards', 'trading', 'swaption'].includes(main_content)}
+      <div class="currency_header_action">
+        <HeaderGlobalAction aria-label="currency" on:click={()=>{openClose("currency");}}>
+          <OverflowMenu  id="currency-overflow-menu">
+            <div slot="menu" 
+            style={`color: white; font-weight: bold; font-size: small;display: inline-flex; align-items:center;
+            --image-flag: url('./flags/${currency_state.get_cur(currency_type).slice(0, 2).toLowerCase()}.svg');`} 
+            class="currency-overflow-menu_selected"
+            >
+            {currency_state.get_cur(currency_type)}</div>
+            {#each currency_state.getAllCurrencies() as curr}
+              <OverflowMenuItem
+                hasDivider
+                disabled={!["AUD", "NZD", "USD"].includes(curr) || $currency_state.button_isDisabled}
+                text={currency_state.symbolString(curr)}
+                id={curr}
+                on:click={() => {currency_type = curr;}}
+                primaryFocus={$currency_state.currency == curr}
+                />
+            {/each}
+          </OverflowMenu>
+        </HeaderGlobalAction>
+      </div>
+      {/if}
 
-    <AccountCard
-      on:click={()=>{openClose("account")}}
-      bind:open={account_card_open}
-      on:viewTR={goToTradeReview}
-    /> 
+    <!-- Account card Settings -->
+      <AccountCard
+        on:click={()=>{openClose("account")}}
+        bind:open={account_card_open}
+        on:viewTR={goToTradeReview}
+      /> 
 
     <HeaderAction bind:isOpen={is_switcher_open} on:click={()=>{openClose("switcher")}}>
       <HeaderPanelLinks>
         <h3 style="padding-left: 0.8rem">Navigation Menu</h3>
-        {#if $main_content == "trading" && ![18].includes($active_product)}
+        {#if main_content == "trading" && ![18].includes($active_product)}
           <HeaderPanelDivider><h5>Change View</h5></HeaderPanelDivider>
-          <HeaderPanelLink on:click={() => {handleViewSwitchingKey('whiteboard'); is_switcher_open=false;}}><div class="nav-menu_item"><DataTable/>&emsp;Whiteboard </div></HeaderPanelLink>
-          <HeaderPanelLink on:click={() => {handleViewSwitchingKey('orders'); is_switcher_open=false;}}><div class="nav-menu_item"><DataTable/>&emsp;Orders</div></HeaderPanelLink>
-          <HeaderPanelLink on:click={() => {handleViewSwitchingKey('trades'); is_switcher_open=false;}}><div class="nav-menu_item"><DataTable/>&emsp;Trades</div></HeaderPanelLink>
+          <HeaderPanelLink on:click={() => {handleViewSwitchingKey('whiteboard'); is_switcher_open=false;}}><div class="nav-menu_item"><DataTable />&nbsp; Whiteboard </div></HeaderPanelLink>
+          <HeaderPanelLink on:click={() => {handleViewSwitchingKey('orders'); is_switcher_open=false;}}><div class="nav-menu_item"><DataTable />&nbsp; Orders</div></HeaderPanelLink>
+          <HeaderPanelLink on:click={() => {handleViewSwitchingKey('trades'); is_switcher_open=false;}}><div class="nav-menu_item"><DataTable />&nbsp; Trades</div></HeaderPanelLink>
         {/if}
 
         <HeaderPanelDivider><h5>Page</h5></HeaderPanelDivider>
-        <HeaderPanelLink on:click={() => {is_switcher_open=false; viewCustomWBs("live");}}><div class="nav-menu_item"><DashboardReference/>&emsp;Live Orders</div></HeaderPanelLink>
-        <HeaderPanelLink on:click={() => {is_switcher_open=false; viewCustomWBs("custom");}}><div class="nav-menu_item"><ChartCustom/>&emsp;Custom Whiteboards</div></HeaderPanelLink>
-        <HeaderPanelLink on:click={() => {is_switcher_open=false; handleViewSwitchingKey();}}><div class="nav-menu_item"><DataTable/>&emsp;Main Products</div></HeaderPanelLink>
-        <HeaderPanelLink on:click={() => {$main_content = 'history'; is_switcher_open=false}}><div class="nav-menu_item"><IbmCloudPakMantaAutomatedDataLineage/>&emsp;Trade History</div></HeaderPanelLink>
+        <HeaderPanelLink on:click={() => {is_switcher_open=false; viewCustomWBs("live");}}><div class="nav-menu_item"><DashboardReference />&nbsp;  Live Orders</div></HeaderPanelLink>
+        <HeaderPanelLink on:click={() => {is_switcher_open=false; viewCustomWBs("custom");}}><div class="nav-menu_item"><ChartCustom/>&nbsp;  Custom Whiteboards</div></HeaderPanelLink>
+        <HeaderPanelLink on:click={() => {is_switcher_open=false; handleViewSwitchingKey();}}><div class="nav-menu_item"><DataTable />&nbsp;  Main Products</div></HeaderPanelLink>
+        <HeaderPanelLink on:click={() => {main_content = 'history'; is_switcher_open=false}}><div class="nav-menu_item"><IbmCloudPakMantaAutomatedDataLineage /> &nbsp; Trade History</div></HeaderPanelLink>
 
         {#if permission["Trader Management"] || permission["Broker Management"]}
           <HeaderPanelDivider><h5>Administration</h5></HeaderPanelDivider>
           {#if permission["Trader Management"] }
-          <HeaderPanelLink on:click={() => { $main_content = 'trader-management'; is_switcher_open=false; }}>
-            <div class="nav-menu_item"><IdManagement/>&emsp;Trader Management</div>
+          <HeaderPanelLink on:click={() => { main_content = 'trader-management'; is_switcher_open=false; }}>
+            <div class="nav-menu_item"><IdManagement /> &nbsp; Trader Management</div>
           </HeaderPanelLink>
           {/if}
           {#if permission["Broker Management"]}
-          <HeaderPanelLink on:click={() => { $main_content = 'broker-management'; is_switcher_open=false; }}>
-            <div class="nav-menu_item"><IdManagement/>&emsp;Broker Management</div>
+          <HeaderPanelLink on:click={() => { main_content = 'broker-management'; is_switcher_open=false; }}>
+            <div class="nav-menu_item"><IdManagement /> &nbsp; Broker Management</div>
           </HeaderPanelLink>
           {/if}
         {/if}
@@ -641,51 +770,57 @@ $: tab_title = () => {
   <SideNav bind:isOpen={isSideNavOpen} ariaLabel="side-nav">
     <SideNavItems>
       <SideNavMenu text="Products" expanded={true}>
-        {#if $currency_state == "AUD"}
+        {#if $currency_state.currency == "AUD"}
           <!-- AUD EFP and IRS -->
           <SideNavMenuItem text="EFP | IRS"
             style={$active_product === 1 ? "color: var(--cds-link-01);" : ""}
-            on:click={() => {storeLastAndUpdate(1, "efp_irs__page"); isSideNavOpen = false;}}
-          />
-        {:else if $currency_state == "USD"}
-          <!-- USD SOFR and IRS -->
-          <SideNavMenuItem text="SOFR SPREAD | IRS SWAPS"
-            style={$active_product === 29 ? "color: var(--cds-link-01);" : ""}
-            on:click={() => {storeLastAndUpdate(29, "sofr_irs__page"); isSideNavOpen = false;}}
+            on:click={() => {storeLastAndUpdate({product_id: 1}, "efp_irs__page"); isSideNavOpen = false;}}
             />
         {/if}
+        {#if $currency_state.currency == "USD"}
+        <!-- AUD EFP and IRS -->
+        <SideNavMenuItem text="SOFR SPREAD | IRS SWAPS"
+          style={$active_product === 29 ? "color: var(--cds-link-01);" : ""}
+          on:click={() => {storeLastAndUpdate({product_id: 29}, "sofr_irs__page"); isSideNavOpen = false;}}
+          />
+      {/if}
         {#each current_products as product}
           <!-- OTHER PRODUCTS -->
           <SideNavMenuItem text={product.product}
             style={$active_product === product.product_id ? "color: var(--cds-link-01);" : ""}
-            on:click={() => {storeLastAndUpdate(product.product_id, product.product+"__page"); isSideNavOpen = false;}}
-          />
+            on:click={() => {storeLastAndUpdate(product, product.product+"__page"); isSideNavOpen = false;}}
+            />
         {/each}
-        {#if $currency_state == "AUD"}
+        {#if $currency_state.currency == "AUD"}
           <!-- TAB STIR -->
           <SideNavMenuItem text="STIR"
             style={$active_product === 18 ? "color: var(--cds-link-01);" : ""}
-            on:click={() => {storeLastAndUpdate(18, "stir__page"); isSideNavOpen = false;}}
-          />
+            on:click={() => {storeLastAndUpdate({product_id: 18}, "stir__page"); isSideNavOpen = false;}}
+            />
         {/if}
       </SideNavMenu>
-      {#if $currency_state == "AUD"}
+      {#if $currency_state.currency == "AUD"}
         <SideNavDivider/>
-        <!-- TAB SWAPTION -->
-        <SideNavLink text="SWAPTION"
-          style={$active_product == 100 ? "color: var(--cds-link-01);" : ""}
-          on:click={() => {storeLastAndUpdate(100, "swaption__page", "swaption", "swaption"); isSideNavOpen = false;}}
-        />
+        <!-- TAB RBA OIS -->
+        <SideNavLink text="RBA OIS"
+          style={active_tab.product_id == 103 ? "color: var(--cds-link-01);" : ""}
+          on:click={() => {storeLastAndUpdate({product_id: 103}, "rba_ois__page", "trading", "rba-ois", true); isSideNavOpen = false;}}
+          />
+        <!-- TAB SWAPTION - DISABLED FOR DEMO -->
+        <!-- <SideNavLink text="SWAPTION"
+          style={active_tab.product_id == 100 ? "color: var(--cds-link-01);" : ""}
+          on:click={() => {storeLastAndUpdate({product_id: 100}, "swaption__page", "swaption", "swaption"); isSideNavOpen = false;}}
+          /> -->
         <!-- TAB FWDS -->
         <SideNavLink text="FORWARDS"
-          style={$active_product == 101 ? "color: var(--cds-link-01);" : ""}
-          on:click={() => {storeLastAndUpdate(101, "forwards__page", "trading", "fwds", true); isSideNavOpen = false;}}
-        />
+          style={active_tab.product_id == 101 ? "color: var(--cds-link-01);" : ""}
+          on:click={() => {storeLastAndUpdate({product_id: 101}, "forwards__page", "trading", "fwds", true); isSideNavOpen = false;}}
+          />
         <!-- TAB FX OPTIONS-->
         <SideNavLink text="FX OPTIONS"
-          style={$active_product == 102 ? "color: var(--cds-link-01);" : ""}
-          on:click={() => {storeLastAndUpdate(102, "fx_options__page", "trading", "fx-options", true); isSideNavOpen = false;}}
-        />
+          style={active_tab.product_id == 102 ? "color: var(--cds-link-01);" : ""}
+          on:click={() => {storeLastAndUpdate({product_id: 102}, "fx_options__page", "trading", "fxOption", true); isSideNavOpen = false;}}
+          />
       {/if}
     </SideNavItems>
   </SideNav>
@@ -697,26 +832,29 @@ $: tab_title = () => {
 <div class="content">
   <!-- Window main content is the Trading component. -->
 
-  {#if $main_content === 'trading'}
-    <Trading bind:showIndicators/>
-  {:else if $main_content === 'swaption'}
+  {#if main_content === 'trading'}
+    <Trading bind:view bind:showIndicators/>
+  {:else if main_content === 'swaption'}
     <Swaption />
-  {:else if $main_content === "custom-whiteboards"}
-    <WhiteboardCustomPage bind:showIndicators/>
-  {:else if $main_content === 'trader-management'}
+  {:else if main_content === "custom-whiteboards"}
+    <WhiteboardCustomPage/>
+  {:else if main_content === 'trader-management'}
     <TraderManagement on:close={applyLastProduct}/>
-  {:else if $main_content === 'history'}
+  {:else if main_content === 'history'}
     <div style="display: flex; flex-direction: column;">
       <History />
+      
     </div>
-  {:else if $main_content === 'broker-management'}
+  {:else if main_content === 'broker-management'}
     <BrokerManagement on:close={applyLastProduct}/>
   {/if}
 
   <!-- Modals -->
-  
-  <!-- // Currently Unused // <MenuModal bind:showMenus></MenuModal> -->
-  
+
+  <!-- Menu Modal -->
+  <MenuModal bind:view bind:main_content bind:showMenus></MenuModal>
+
+  <!-- This is the quick order form modal -->
   <QuickOrderForm bind:qorder={quick_order_form} on:server_error={handleServerError} />
 
   <div class="notification">
@@ -732,18 +870,13 @@ $: tab_title = () => {
     {/if}
   </div>
 
-  {#if $toasts}
-    <div id="toasts" style="--offset:{$active_product == -1 ? "40px" : "0px"};">
-      <Toasts/>
-    </div>
-  {/if}
-
   <ReviewRequestNotification on:viewTR={goToTradeReview}/>
-  
-  <Calculator/>
+  <div id="myCalculator" style="position: fixed; right: 15px;  bottom: 10px; display: flex; flex-direction: column; gap:3px;"> 
+    <!-- svelte-ignore a11y-invalid-attribute -->
+    <div id="cal"><Calculator/></div>
+  </div>
 
 </div>
-
 
 <style> 
 .title-btn {
@@ -778,43 +911,140 @@ $: tab_title = () => {
   font-size: 70%;
   padding-left: 0.5rem;
 }
-
 :global(.confo_popover .bx--popover-contents){
   max-width: none;
 }
-
-/* Navbar tabs */
-:global(:is(a.bx--header__menu-item[aria-current=page], .bx--header__menu-item--current):focus) {
-  border-color: #0000;
-  box-shadow: none;
-  &::after{
-    border-bottom: 3px solid var(--cds-inverse-support-04, #4589ff);
-  }
-}
-:global(a.bx--header__menu-item[aria-current] span.bx--text-truncate--end) {
-  color: var(--cds-link-01, #78a9ff);
-}
-
 /*<!--overflow-menu -->*/
+:global(#currency-overflow-menu > ul) {
+  width: 700px ;
+  font-weight: bold;
+  font-size: small;
+
+}
 :global(button.bx--overflow-menu ) {
   width: 100%;
   height: 100%;
   background-color: inherit;
 }
-:global(#currency-overflow-menu) {
-  outline: none;
-  & > ul.bx--overflow-menu-options {
-    width: 205%;
-    & *:focus {
-      outline:none;
-    }
-  }
+ /* national flag - currency  */
+:global(ul.bx--overflow-menu-options ) {
+  width: 700px ;
+  padding: 10px;
 }
+:global(ul.bx--overflow-menu-options  li) {
+  width: 700px ;
+}
+:global(ul.bx--overflow-menu-options *:focus ) {
+  outline:none;
+
+}
+:global(ul.bx--overflow-menu-options *:focus a:before) {
+  content: "";
+  position:absolute;
+  background-color: rgb(0,98,221);
+  width: 4px;
+  height: 100%;
+  bottom: 0px;
+  left: 0px;
+  background-color: rgba(0, 115, 255, 0.14);
+}
+:global(ul.bx--overflow-menu-options li#USD:before ) {
+  background-image: url('./flags/us.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+:global(ul.bx--overflow-menu-options  li#AUD:before ) {
+  background-image: url('./flags/au.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 23 / 17;
+}
+
+:global(ul.bx--overflow-menu-options li#NZD:before ) {
+  background-image: url('./flags/nz.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+
+:global(ul.bx--overflow-menu-options li#CAD:before ) {
+  background-image: url('./flags/ca.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+:global(ul.bx--overflow-menu-options li#JPY:before ) {
+  background-image: url('./flags/jp.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+:global(ul.bx--overflow-menu-options li#GBP:before ) {
+  background-image: url('./flags/gp.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+:global(ul.bx--overflow-menu-options li#EUR:before ) {
+  background-image: url('./flags/eu.svg');
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+.currency-overflow-menu_selected::before {
+  background-image: var(--image-flag);
+  display: inline-flex;
+  align-items: center;
+  margin-right: 10px;
+  width: 23px; 
+  height: 17px;
+  content:"";
+  box-sizing: border-box;
+  overflow-clip-margin: content-box;
+  overflow: clip;
+  aspect-ratio: auto 30 / 17;
+}
+
+/* :global(button.bx--overflow-menu  ul.bx--overflow-menu-options ) {
+  width: 140%;
+} */
 
 :global(button.bx--overflow-menu  ul.bx--overflow-menu-options li.bx--overflow-menu-options__option) {
   color: #000000;
 }
 
+:global(a[aria-current] span.bx--text-truncate--end) {
+  color: var(--cds-link-01, #78a9ff);
+  }
 .content {
   top:48px;
   font-size: 14px;
@@ -832,11 +1062,11 @@ $: tab_title = () => {
   bottom: 30px;
   z-index: 100;
 }
-#toasts {
-  position: absolute;
-  right: 0;
-  z-index: 100;
-  top: calc(37px + var(--offset));
+:global(svg.gateway-connected-icon) {
+  fill: var(--cds-support-02);
+}
+:global(svg.gateway-disconnected-icon) {
+  fill: var(--cds-support-01);
 }
 :global(.bx--header__action > .bx--overflow-menu) {
   transition: none !important;
@@ -867,6 +1097,11 @@ $: tab_title = () => {
   }
 }
 @media (max-width: 1612px) { 
+  :global(.bx--header__nav){
+    display: none;
+  }
+}
+@media (max-width: 1612px) {
   :global(.bx--header__nav) {
     display: none;
   }
@@ -911,12 +1146,40 @@ $: tab_title = () => {
   flex-direction: row;
   align-items: center;
 }
-/* //TODO: Check the below */
 /* Fix Calculator Menu's z-index overlapped */
 :global(div.bx--data-table-container > section) {
   z-index: 0 !important;
 }
 :global(.bx--header__global > .currency_header_action > .bx--header__action  ) {
   width: 6rem;
+}
+/* Login as Admin Modal */
+:global(.login_warning  .bx--modal-container) {
+  width: 40rem;
+}
+:global(.login_warning .bx--modal-header){
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 1rem;
+  margin-bottom: 0;
+}
+:global(.login_warning .bx--modal-header__heading){
+  font-weight: bold;
+  font-size: 35px;
+}
+:global(.login_warning .bx--modal-content){
+  display: flex;
+  justify-content: center;
+  margin: 2rem;
+  padding-top: 0;
+}
+:global(.login_warning .bx--modal-close){
+  display: none;
+}
+:global(.login_warning .bx--modal-footer .bx--btn){
+  justify-content: center;
+  padding: 0;
+  font-weight: bold;
 }
 </style>

@@ -3,8 +3,6 @@
 // The user who is logged in.
 // import brokers from './brokers';   See comment below
 import { writable, get } from 'svelte/store';
-import { main_content } from './active_product';
-
 const user = (function () {
   const { subscribe, set } = writable({ isLoggedIn: false });
 
@@ -15,7 +13,6 @@ const user = (function () {
       u.isLoggedIn = true;
     }
     set(u);
-    if (u.isLoggedIn) main_content.canView();
   };
   
   const logout = function () {

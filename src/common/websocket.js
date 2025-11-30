@@ -37,16 +37,14 @@ import data_collection_settings from '../stores/data_collection_settings.js';
 import confos from '../stores/confos.js';
 import report from '../stores/report.js';
 import custom_whiteboards from '../stores/custom_whiteboards.js';
-import { markitwire, websocket as ws_store } from '../stores/connections.js';
+import markitwire_connected from '../stores/markitwire_connected.js';
 import config from "../../config.json";
-import { validateTime } from "./time_validation.js";
 
 let initialisationComplete = false;
 const websocket = {
 
   socket: null,
   callbacks: {},
-
 
   // This submits the login credentials to the server using a promise.  If they
   // are accepted it creates a new promise to make a websocket connection.  On a
@@ -74,52 +72,34 @@ const websocket = {
 
         return new Promise(function (resolve, reject) {
           const loc = window.location;
-          var ws = new WebSocket(`${config.env == 'prod' ? 'wss' : 'ws'}://` + loc.host + loc.pathname);
+          var ws = new WebSocket(`ws://` + loc.host + loc.pathname);
           websocket.socket = ws;
 
           // Set up handlers for the web socket.  When the connection opens the
           // promise.  If the connection fails to open reject with an error.
 
           ws.onopen = function () {
-            ws_store.set(true);
             resolve(ws);
           };
 
           ws.onerror = function (err) {
-            console.log(err);
             reject(err);
-          };
-
-          // Handle ws disconnects
-
-          ws.onclose = function (event) {
-            console.log(event);
-            // Using store instead of just logging out/reloading as it allows for graceful ui notification to the user (and if its due to the server going down, cannot reload page anyway)
-            ws_store.set(false);
-            initialisationComplete = false;
           };
 
           // Set up an incoming message handler.
 
           ws.onmessage = function (event) {
-            if (JSON.parse(event.data).hasOwnProperty("ping")) {
-              ws.send(JSON.stringify({ ping: 0 }))
+            // Parse the JSON message and process it.
+            var msg = JSON.parse(event.data);
+            // Make sure the message is not empty.
+            if (Object.keys(msg).length === 0) {
+              return;
+              // console.error('Received a message with no content');
             }
-            
-            // Check if PC time matches server time, force logout time is wrong
-            if(!validateTime()){
-              // Parse the JSON message and process it.
-              var msg = JSON.parse(event.data);
-              // Make sure the message is not empty.
-              if (Object.keys(msg).length === 0) {
-                return;
-              }
-              websocket.receiveMessage(msg);
-            } else {
-              ws.close();
-              window.location.reload();
-            }
+            websocket.receiveMessage(msg);
           };
+
+          setInterval(()=>{ws.send(JSON.stringify({ ping: 0 }))}, 150000);
         });
       })
       .then(ws => {
@@ -136,6 +116,7 @@ const websocket = {
     return fetch('/logout',{
       method: 'GET'
     }).then(response => {
+      console.log(response);
       initialisationComplete = false;
     });
   },
@@ -504,10 +485,6 @@ const websocket = {
     websocket.socket.send(JSON.stringify({ refresh_liquidity_counts: 0 }));
   },
 
-  favouriteCurrentTrader: function(trader_ids, current_broker_id) {
-    websocket.socket.send(JSON.stringify({
-      update_broker_preferences: {broker_id: current_broker_id, key: 'trader_favourites', value: trader_ids} }))
-  },
   // This deletes any number of orders.
 
   deleteOrders: function (order_ids) {
@@ -585,7 +562,6 @@ const websocket = {
     data_collection_settings.setGateways(msg.init_gateways);
     data_collection_settings.setCalcIRS(msg.calcIRS);
     data_collection_settings.setCalcOIS(msg.calcOIS);
-    data_collection_settings.setStraightInterp(msg.interpChoice);
     swaption_quotes.setBBSW(msg.init_swaption_quotes);
     swaption_quotes.setRBA(msg.init_rba_swaption_quotes);
     swaption_market_structures.set(msg.init_swaption_structure);
@@ -594,7 +570,9 @@ const websocket = {
     liquidityTrades.set_trades(msg.init_liquidityTrades);
     dailyfx.set(msg.init_fxrate);
     quotes.setRbaDates(msg.init_rba_dates);
-    markitwire.set({connected: msg.init_markitwire, env : msg.init_markitwire_env, active: msg.init_markitwire_active});
+    markitwire_connected._set_connection(msg.init_markitwire);
+    markitwire_connected._set_env(msg.init_markitwire_env);
+    markitwire_connected._set_active(msg.init_markitwire_active);
     report.set(msg.init_eod);
 
     for(let pid of get(products)) {
@@ -688,13 +666,13 @@ const websocket = {
     websocket.socket.send(JSON.stringify({ setCalcOIS: bool }));
   },
 
-  setStraightInterp: function (bool) {
-    websocket.socket.send(JSON.stringify( { setStraightInterp: bool}))
-  },
-
   disconnectGateway: function (id) {
     websocket.socket.send(JSON.stringify({ disconnectGateway: id }));
     data_collection_settings.removeGateway(id);
+  },
+
+  disconnectGatewaySheet: function (id) {
+    websocket.socket.send(JSON.stringify({ disconnectGatewaySheet: id }));
   },
 
   requestPriceHistory: function (years, product_id, fwd, start) {
@@ -714,8 +692,7 @@ const websocket = {
   },
 
   receiveMessage: function (msg) {
-
-     var product_ids;
+    var product_ids;
     // The server message is an object, with separate messages held in different
     // properties.  That allows a single message to convey any number of data
     // types.
@@ -735,6 +712,9 @@ const websocket = {
     // Handle all possible actions in a pre-determined order.
     if (msg.hasOwnProperty('security_data')) {
       ticker.set(msg.security_data);
+
+      // renable button currency tab
+      currency_state.set_button_disabled(false);
     }
     // Handle fx data from bloomberg
     if (msg.hasOwnProperty('fx_data')) {
@@ -786,6 +766,9 @@ const websocket = {
         }
       }
       prices.recalculateMids(product_ids);
+
+      // reenable button currency tab
+      currency_state.set_button_disabled(false);
     }
 
     if (msg.hasOwnProperty('override_quotes')) {
@@ -870,7 +853,6 @@ const websocket = {
     if (msg.hasOwnProperty('refresh_liquidity_counts')) liquidity_trade_count.setAll(msg.refresh_liquidity_counts);
     
     if (msg.hasOwnProperty('setCalcIRS')) data_collection_settings.setCalcIRS(msg.setCalcIRS);
-    if (msg.hasOwnProperty('setInterpChoice')) data_collection_settings.setStraightInterp(msg.setInterpChoice);
     if (msg.hasOwnProperty('setCalcOIS')) data_collection_settings.setCalcOIS(msg.setCalcOIS);
     if (msg.hasOwnProperty('gateway_connected')) data_collection_settings.addGateway(msg.gateway_connected);
     if (msg.hasOwnProperty('gateway_disconnected')) data_collection_settings.removeGateway(msg.gateway_disconnected);
@@ -885,19 +867,19 @@ const websocket = {
 
     // When the app connected, wait until it sends out the martkitwire connection env. 
     // The signal Markitwire is only recognized if it is fully logged into Markitwire environment, 
-    if (msg.hasOwnProperty('markit_connection_env')) markitwire.set({
+    if (msg.hasOwnProperty('markit_connection_env')) markitwire_connected.set({
                                                                       connected : true,
                                                                       env: msg.markit_connection_env,
                                                                       active: true
                                                                     });
     // If markit logged out/in but still connected, set markit active to false/true                                                               
-    if (msg.hasOwnProperty('markit_active')) markitwire.update_active(msg.markit_active);
+    if (msg.hasOwnProperty('markit_active')) markitwire_connected._set_active(msg.markit_active);
     // Set markit connection to true
-    if (msg.hasOwnProperty('markit_connection')) markitwire.updated_connection(true);
+    if (msg.hasOwnProperty('markit_connection')) markitwire_connected._set_connection(true);
     // Reset markitwire store
     if (msg.hasOwnProperty('markit_disconnected')) {
-      markitwire.updated_connection(false);
-      markitwire.update_active(false);
+      markitwire_connected._set_connection(false);
+      markitwire_connected._set_active(false);
     }
     // Update report email
     if (msg.hasOwnProperty("update_report_email")) report.updateReportEmail(msg.update_report_email);

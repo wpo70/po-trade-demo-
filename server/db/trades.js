@@ -2,7 +2,7 @@
 
 const { makeQueryArrays, query } = require('.');
 const { daily_brokerage_report } = require('../email_handler');
-const { genericToTenor, isBusinessDay, addTenorToDate, getRbaRuns, addMonths, toTenor } = require('../utils/formatter');
+const { genericToTenor, isBusinessDay } = require('../utils/formatter');
 const { logger } = require('../utils/logger.js');
 const config = require('../../config.json');
 
@@ -130,31 +130,9 @@ async function insertTicket(ticket) {
 
   // Initialise the query string and array.
 
-  let maturity;
-  switch (ticket.product_id) {
-    case 17:
-    case 27:
-      let start = new Date(ticket.start_date);
-      maturity = addMonths(start, 3);
-      maturity.setDate(1);
-      // eslint-disable-next-line no-constant-condition
-      while (true){
-        if (maturity.getDay() == 5) break;
-        maturity.setDate(maturity.getDate() + 1);
-      }
-      maturity.setDate(maturity.getDate() + 6);
-      break;
-    case 20:
-      maturity = new Date((await getRbaRuns())[ticket.year - 1000][1]);
-      break;
-    default:
-      maturity = addTenorToDate(toTenor([ticket.year]), ticket.start_date);
-      break;
-  }
-
-  let a = [ticket.offer.order_id, ticket.bid.order_id, ticket.bic_offer.id, ticket.bic_bid.id, maturity];
-  let f = ['offer_order_id', 'bid_order_id', 'offer_bic_id', 'bid_bic_id', 'maturity_date'];
-  let v = ['$1', '$2', '$3', '$4', '$5'];
+  let a = [ticket.offer.order_id, ticket.bid.order_id];
+  let f = ['offer_order_id', 'bid_order_id'];
+  let v = ['$1', '$2'];
 
   makeQueryArrays(ticket, a, f, v, ['offer', 'bid', 'bic_bid', 'bic_offer', 'fx', 'fixed_leg', 'floating_leg', 'fwd', 'offer_fut_acc', 'bid_fut_acc', 'vconSender']);
 

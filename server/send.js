@@ -3,6 +3,15 @@
 const { sessions, activePocbot, activeConfobot, activeMarkit } = require('./map.js');
 const { logger } = require('./utils/logger.js');
 
+var tm = 0;
+module.exports.start = function () {
+  tm = Date.now();
+};
+module.exports.stop = function () {
+  const t = Date.now() - tm;
+  logger.info('Duration %d', t);
+};
+
 module.exports.sendToAllClients = function (msg) {
   // If the message has no content don't send anything.
 
@@ -39,7 +48,7 @@ module.exports.sendToOneClient = function (ws, msg) {
 };
 
 let queue = [];
-module.exports.count = {}; // Requests made count = { uid: # of reqs }
+module.exports.count = {};
 
 module.exports.addToGatewayQueue = function (uid) {
   queue.push(uid);

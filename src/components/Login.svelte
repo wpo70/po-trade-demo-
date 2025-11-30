@@ -1,5 +1,4 @@
 <script>
-import config from '../../config.json'
 import { onMount } from 'svelte';
 
 import { 
@@ -15,6 +14,7 @@ import {
   ModalBody,
   ModalHeader,
   ModalFooter,
+  Checkbox,
   ToastNotification,
   Loading
 } from 'carbon-components-svelte';
@@ -22,41 +22,24 @@ import User from 'carbon-icons-svelte/lib/User.svelte';
 
 import Validator from '../common/validator.js';
 import websocket from '../common/websocket.js';
-import { timestampToDateTime } from '../common/formatting.js';
-import { validateTime, server_time, current_time } from '../common/time_validation.js';
+import config from "../../config.json";
+import currency_state from '../stores/currency_state.js';
 
 // Show failed login messages from the server.
 
 let error_message = '';
 let forgot_pass_error_message = '';
 let loading = false;
-let msg = false;
-let count = 0;
+
 // Open Modal for Forgot Password.
 let open = false;
-
 
 // Put the focus on username when showing the login form.
 
 let input_username;
 onMount(() => {
-  input_username?.focus();
-  validateTime();
+  input_username.focus();
 });
-
-function timer(){
-  if(!count == 0) return;
-    count = 15;
-    const timer = setInterval(() => {
-      if (--count < 1) clearInterval(timer);
-    }, 1000);
-}
-
-function handleRefresh(){
-  timer();
-  if(!validateTime()) window.location.reload();
-  msg = true;
-}
 
 // These are the form fields for placing an order.
 
@@ -174,105 +157,119 @@ async function loadTimeout() {
 
 
 <svelte:head>
-  <title>PO Trade</title>
+  <title>Rate Edge OMS</title>
 </svelte:head>
 
 <Header>
-  <h5 style="margin-left:-11.5px; color:#ffffff;">PO Trade<code class="version">{(config.env).toUpperCase()}</code></h5>
+  <div style="display:flex; align-items:center; margin-left:10px; gap:12px;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" width="140" height="35">
+      <defs>
+        <linearGradient id="hdr-grad" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" style="stop-color:#475569"/>
+          <stop offset="100%" style="stop-color:#cbd5e1"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(5, 8)">
+        <path d="M 3 28 Q 12 25, 20 16 Q 28 8, 35 4" 
+              fill="none" stroke="url(#hdr-grad)" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="35" cy="4" r="3.5" fill="#ef4444"/>
+        <line x1="3" y1="35" x2="35" y2="35" stroke="#475569" stroke-width="2"/>
+      </g>
+      <text x="50" y="32" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
+            font-size="26" font-weight="600" letter-spacing="0.5">
+        <tspan fill="#f1f5f9">Rate</tspan><tspan fill="#ef4444">Edge</tspan>
+      </text>
+    </svg>
+    <code class="env-badge">DEMO</code>
+  </div>
 </Header>
-<div id="login_wrapper">
-  {#if !validateTime()}
-    <div id="login_layout">
-        <div id="login_container">
-          <!-- Left column -->
-          <div id="login">
-            <Tile>
-              <div class="login-header">
-                <User 
-                  style="margin-top:3px;"
-                  size={20}
-                />
-                <h4 style="padding-bottom:5px; margin-left:0.5rem; font-weight:bold;">Login</h4>
-              </div>
-              <Form on:submit={(e) => {
-                  e.preventDefault();
-                  handleSubmit();
-                }}
-              >
-                <FormGroup>
-                  <TextInput
-                    bind:ref={input_username}
-                    bind:value={username.str}
-                    bind:dirty={username.dirty}
-                    bind:invalid={username.invalid}
-                    labelText="Username"
-                    invalidText="Required"
-                  />
-                  <PasswordInput
-                    bind:value={password.str}
-                    bind:dirty={password.dirty}
-                    bind:invalid={password.invalid}
-                    labelText="Password"
-                    invalidText="Required"
-                  />
-                </FormGroup>
-                
-                <div class="login-error">
-                  {error_message}
-                </div>
 
-                <ButtonSet stacked>
-                  <Button type="submit" style="cursor:pointer">
-                    Login
-                    {#if loading}
-                      <Loading small withOverlay={true} style="position:absolute; padding-right:1rem; justify-content:end"/>
-                    {/if}
-                  </Button>
-                  {#if error_message !== ''}
-                  <Button kind="ghost" size="small" on:click={() => open = true}>Forgot Password?</Button>
+<div id="login_wrapper">
+  <div id="login_layout">
+      <div id="login_container">
+        <!-- Left column - Logo -->
+        <div id="login_logo">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="280" height="105">
+            <defs>
+              <linearGradient id="curve-grad-dark" x1="0%" y1="100%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#475569"/>
+                <stop offset="100%" style="stop-color:#cbd5e1"/>
+              </linearGradient>
+            </defs>
+            <g transform="translate(95, 12)">
+              <path d="M 0 32 Q 35 28, 58 15 Q 80 2, 102 -5" 
+                    fill="none" stroke="url(#curve-grad-dark)" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="102" cy="-5" r="5" fill="#ef4444"/>
+            </g>
+            <text x="160" y="72" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
+                  font-size="40" font-weight="600" text-anchor="middle" letter-spacing="0.5">
+              <tspan fill="#f1f5f9">Rate</tspan><tspan fill="#ef4444">Edge</tspan>
+            </text>
+            <line x1="52" y1="88" x2="268" y2="88" stroke="#475569" stroke-width="2.5"/>
+          </svg>
+          <div class="tagline">Order Management System</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Right column - Login Form -->
+        <div id="login">
+          <Tile>
+            <div class="login-header">
+              <User 
+                style="margin-top:3px; color: #999; "
+                size={20}
+              />
+              <h4 style="padding-bottom:5px; color: #999; font-weight: bold;">&nbsp; Login</h4>
+            </div>
+
+            <Form on:submit={(e) => {
+                e.preventDefault();
+                handleSubmit();
+                // Needed to set AUD default whenever login back
+                currency_state._set("AUD", false);
+              }}
+            >
+              <FormGroup>
+                <TextInput
+                  bind:ref={input_username}
+                  bind:value={username.str}
+                  bind:dirty={username.dirty}
+                  bind:invalid={username.invalid}
+                  labelText="Username"
+                  invalidText="Required"
+                />
+                <PasswordInput
+                  bind:value={password.str}
+                  bind:dirty={password.dirty}
+                  bind:invalid={password.invalid}
+                  labelText="Password"
+                  invalidText="Required"
+                />
+              </FormGroup>
+              
+              <div class="login-error">
+                {error_message}
+              </div>
+
+              <ButtonSet stacked>
+                <Button type="submit" style="cursor:pointer">
+                  Login
+                  {#if loading}
+                    <Loading small withOverlay={true} style="position:absolute; padding-right:1rem; justify-content:end"/>
                   {/if}
-                </ButtonSet>
-              </Form>
-            </Tile>
-          </div>
-          <div style="width:2px; height:170px; background-color: #999;margin-left: 20px;margin-right:20px;"></div>
-          <!-- Right column -->
-          <div id="login_description">
-                <img  src="https://i.ibb.co/yVXMYzm/LOGO76X.png" alt="LOGO" 
-                border="0" style=" border-radius: 3.5px; 
-                border: 0; display: block; outline: none; 
-                text-decoration: none; height: 100px; font-size: 50px;" width="200px"/>
-          </div>
-        </div>
-        <!-- End of Login Container -->
-        <div id="login_endNote" style="font-size: 90%">{`Copyright 2024 @ PO Capital Markets Pty Ltd. All rights reserved.`.toUpperCase()}</div>
-    </div>
-    {:else}
-      <div class="time_error">
-        <div class="error_header">
-          <h1>
-            ERROR: DATE/TIME IS INCORRECT
-          </h1>
-        </div>
-        <div class="error_body">
-          <p> Your PC says the time is {timestampToDateTime(current_time)}<br/>
-              The actual time is {timestampToDateTime(server_time)}<br/>
-              <a target="_blank" href="ms-settings:dateandtime?activationSource=SMC-IA-4026213">Ensure time is set automatically</a><br/>
-          </p>
-          <Button class="refresh_login_button" kind="secondary" on:click={handleRefresh}>
-            {#if !msg}
-              Refresh Application
-            {:else}
-              {#if count > 0}
-                Please try again in {count} seconds
-              {:else}
-                Please try refresh now
-              {/if}
-            {/if}
-          </Button>
+                </Button>
+                {#if error_message !== ''}
+                <Button kind="ghost" size="small" on:click={() => open = true}>Forgot Password?</Button>
+                {/if}
+              </ButtonSet>
+            </Form>
+          </Tile>
         </div>
       </div>
-    {/if}
+      <!-- End of Login Container -->
+      <div id="login_endNote">COPYRIGHT 2025 @ RATE EDGE PTY LTD. ALL RIGHTS RESERVED.</div>
+  </div>
 </div>
 <div class="notification"
 style="position: fixed; bottom: 30px;">
@@ -297,21 +294,37 @@ style="position: fixed; bottom: 30px;">
 }
 :global(#login .bx--text-input-wrapper) { margin-top: 0.5rem; } 
 :global(#login .bx--password-input-wrapper) { margin-top: 0.75rem; }
-#login_description {
-  width: 250px;
-  align-self: stretch;
+
+#login_logo {
+  width: 300px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  display: flex;
-
 }
+
+.tagline {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  margin-top: 8px;
+}
+
+.divider {
+  width: 1px;
+  height: 180px;
+  background: linear-gradient(180deg, transparent 0%, #525252 20%, #525252 80%, transparent 100%);
+  margin: 0 30px;
+}
+
 #login_container{
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: center;
   width:100%;
-  padding: 20px;
+  padding: 30px;
 }
 #login_endNote{
   width: 100%;
@@ -320,17 +333,20 @@ style="position: fixed; bottom: 30px;">
   align-items: center;
   text-align: center;
   font-weight: 400;
-  color: #999;
+  font-size: 11px;
+  color: #666;
+  letter-spacing: 0.5px;
 }
 #login_layout {
   display: flex;
   flex-direction: column;
-  background-color: var(--cds-ui-01);
-  width: 600px;
-  min-height: 400px;
+  background-color: #262626;
+  width: 680px;
+  min-height: 320px;
   justify-content: center;
   align-items: center;
-  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border-radius: 4px;
 }
 #login_wrapper {
   position: fixed;
@@ -357,55 +373,13 @@ style="position: fixed; bottom: 30px;">
   position: relative;
   z-index: 100;
 }
-.version {
-  font-size: 70%;
-  padding-left: 0.5rem;
-}
-
-.time_error {
-  display: flex;
-  flex-direction: column;
-  background-color: #262626;
-  width: 600px;
-  min-height: 400px;
-  align-items:center;
-  box-shadow: 0 4px 8px 0 rgba(0, 0, 0, 0.2), 0 6px 20px 0 rgba(0, 0, 0, 0.19);
-
-}
-
-.error_header, .error_body {
-  width: 100%;
-  display:flex;
-  justify-content: center;
-  text-align:center
-}
-
-
-.error_header h1 {
-  color: #da1e28;
-  font-size: 34px;
-  padding-top: 12px;
-  font-weight:400;
-}
-
-.error_body p{
-  font-size: 18px;
-  padding-bottom:48px;
-}
-
-.error_body {
-  flex-grow: 1;
-  display:flex;
-  flex-direction:column;
-  position:relative;
-  justify-content: center;
-}
-
-:global(.error_body .refresh_login_button) {
-  position:absolute;
-  bottom: 0;
-  text-align:center;
-  width: 100%;
-  max-width:100%;
+.env-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: #1e3a5f;
+  color: #94a3b8;
+  padding: 3px 8px;
+  border-radius: 3px;
+  letter-spacing: 1px;
 }
 </style>

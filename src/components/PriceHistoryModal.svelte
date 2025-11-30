@@ -7,7 +7,7 @@
   import products from "../stores/products";
   import websocket from "../common/websocket";
   import traders from "../stores/traders";
-  import DraggableModal from "./Utility/DraggableModal.svelte";
+  import DraggableModal from "./DraggableModal.svelte";
   import active_product from "../stores/active_product";
   import { selected_custom_wb } from "../stores/custom_whiteboards";
 

@@ -6,7 +6,7 @@
     Checkbox,
   } from 'carbon-components-svelte';
 
-  import CustomComboBox from '../../Utility/CustomComboBox.svelte';
+  import CustomComboBox from '../../CustomComboBox.svelte';
 
   import liquidityTrades from '../../../stores/liquidityTrades';
 

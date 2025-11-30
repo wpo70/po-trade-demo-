@@ -1,8 +1,0 @@
-{
-  "eslint.alwaysShowStatus": true,
-  "search.exclude": {
-    "**/public": true,
-    "**/node_modules": true
-  },
-  "eslint.lintTask.enable": true
-}

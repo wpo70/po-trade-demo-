@@ -80,27 +80,16 @@ const trade_reviews = (
     }
 
     const validate = function (trade_review) {
-      function price_validation() {
-        if (orders_cache.length > 2) {
-          // TODO: Add proper validation handling for multi-cpty trades
-          return true;
-        } else {
-          return orders_cache[0].price == orders_cache[1].price;
-        }
-      }
-
       const me = user.get();
       if (trade_review == null || !trade_review.reviewers.includes(me) || trade_review.reviewed_by.includes(me)) {
         return false;
       }
-      const orders_cache = trade_review.orders.map(o => orders.get(o));
+      let offer = orders.get(trade_review.orders[0]);
+      let bid = orders.get(trade_review.orders[1]);
       // If order doesn't exist, remove the trade review
-      if (orders_cache.some(o => !o)) {
-        remove([trade_review.review_id]);
-        return false;
-      }
+      if (!offer || !bid) {remove([trade_review.review_id]); return false;}
       // If order exists, validate the reviews if its firmed and has a correct price. 
-      if (orders_cache.every(o => o.firm) && price_validation()) {
+      if (offer.firm && bid.firm && offer.price == bid.price) {
         return true;
       } else {
         remove([trade_review.review_id]);

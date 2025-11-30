@@ -1,10 +1,10 @@
 'use strict';
 
+const Spline = require('cubic-spline');
 const { getClient, makeQueryArrays, query } = require('.');
 const { logger } = require('../utils/logger.js');
 const { getGeneralPreferences } = require('./preferences');
 const { roundToNearest } = require('../utils/formatter');
-const CustomSpline = require('../custom_spline');
   
 // This function will update the currency type when give the message "get_currency"
 // When currency is NZD, it will get the Quotes_NZD instead of quotes
@@ -13,25 +13,19 @@ const CustomSpline = require('../custom_spline');
 let quote_table_name = "quotes";
 
 let calcIRS = true; // align with store calcIrs's value default at True
-let lin_interp = true;
-setCalculationBoolsFromPrefernce();
+setCalcIRSFromPrefernce();
 
-async function setCalculationBoolsFromPrefernce () {
-  const gen_prefs = await getGeneralPreferences();
-  calcIRS = gen_prefs.calcIRS;
-  lin_interp = gen_prefs.interpchoice;
+async function setCalcIRSFromPrefernce () {
+  calcIRS = (await getGeneralPreferences()).calcIRS;
 }
 
 module.exports.setCalcIRS_quotes = function (bool = true) {
   calcIRS = bool;
 };
 
-module.exports.setLinearInterp = function (bool = true) {
-  lin_interp = bool;
-};
-
 module.exports.updateQuotes = updateQuotes;
 async function updateQuotes (quotes, _calcIRS = calcIRS) {
+
   // Loop over the array of indicators and add them to the database in a single
   // transaction.  This is a bulk initialisation of all quotes for a product.
   // The data has come from the Bloomberg gateway.
@@ -81,7 +75,6 @@ async function updateQuotes (quotes, _calcIRS = calcIRS) {
     else quotes.push(...prodQuotes[prod]);
   }
 
-  // TODO: Store exact values in db and perform handling/rounding in front end
   // Loop through the array of indicators and changing the mid to an eighth of a basis point
   quotes.forEach((q)=>{
     if(q.mid !== undefined){
@@ -125,7 +118,7 @@ async function updateQuotes (quotes, _calcIRS = calcIRS) {
   }
 
   if (_calcIRS && quotes.some(q => q.product_id == 2)) {
-    let irsQuotes = await module.exports.calcImpliedIRS();
+    let irsQuotes = await calcImpliedIRS();
     let irsRows = await updateQuotes(irsQuotes, false);
     rows.push(...irsRows);
   }
@@ -324,7 +317,7 @@ module.exports.getTickerSecurities = async function (ticker_securities) {
   // get going.
 
   try {
-    let pg_result = await query('SELECT * FROM tickers ORDER BY ticker_id');
+    const pg_result = await query('SELECT * FROM tickers ORDER BY ticker_id');
 
     // This is an asynchronous function, Fill the ticker array with the query
     // result.
@@ -337,21 +330,10 @@ module.exports.getTickerSecurities = async function (ticker_securities) {
   }
 };
 
-module.exports.getEodSecurities = async function (eod_securities) {
-  try {
-    let test = await query(`SELECT security FROM quotes WHERE security <> ''`);
-    for(let row of test.rows){
-      eod_securities.push(row);
-    }
-  } catch (err) {
-    logger.error('getEodSecurities: %s', err.message);
-  }
-};
-
 module.exports.getQuotes = async function (product_id, currency_code) {
   var rows = null;
   try {
-    let pg_result = await query(`SELECT * FROM ${quote_table_name} q WHERE q.product_id=$1 q.currency_code = $2 ORDER BY q.year`, [product_id, currency_code]);
+    const pg_result = await query(`SELECT * FROM ${quote_table_name} q WHERE q.product_id=$1 q.currency_code = $2 ORDER BY q.year`, [product_id, currency_code]);
     rows = pg_result.rows;
   } catch (err) {
     logger.error('getQuotes(): %s', err.message);
@@ -364,7 +346,7 @@ module.exports.getQuotes = async function (product_id, currency_code) {
 async function getQuotesAtYears(product_id, years, currency_code) {
   var rows = null;
   try {
-    let pg_result = await query(`SELECT * FROM ${quote_table_name} q WHERE q.product_id=$1 AND q.year=$2::double precision AND q.currency_code = $3 ORDER BY q.year`, [product_id, years, currency_code]);
+    const pg_result = await query(`SELECT * FROM ${quote_table_name} q WHERE q.product_id=$1 AND q.year=$2::double precision AND q.currency_code = $3 ORDER BY q.year`, [product_id, years, currency_code]);
     rows = pg_result.rows;
   } catch (err) {
     logger.error('getQuotesAtYears(): %s', err.message);
@@ -372,7 +354,7 @@ async function getQuotesAtYears(product_id, years, currency_code) {
   return rows;
 }
 
-module.exports.calcImpliedIRS = async function () {
+async function calcImpliedIRS () {
   let efpQuotes = await query("SELECT * FROM quotes WHERE product_id = 2 ORDER BY year asc");
   let irsQuotes = await query("SELECT * FROM quotes WHERE product_id = 1 AND (year = 1 OR year = 0.75 OR year = 0.5) ORDER BY year asc");
   let futures = await query("SELECT last_mid FROM tickers WHERE property = 'xma' OR property = 'yma' ORDER BY property");
@@ -399,6 +381,7 @@ module.exports.calcImpliedIRS = async function () {
 
 async function interpolateQuotes (rows) {
   let overrides = await query(`SELECT year, override FROM quotes WHERE product_id = ${rows[0].product_id} AND override IS NOT NULL`);
+  
   // Sort the data by start date
   let data = rows.slice();
   data.sort((a, b) => a.year - b.year);
@@ -414,7 +397,7 @@ async function interpolateQuotes (rows) {
     }
   }
 
-  // Get the x and y values for the interpolation  
+  // Get the x and y values for the interpolation
   let x1 = data.filter(row => row.mid != undefined || row.override != undefined).map(d => d.year);
   let y1 = data.filter(row => row.mid != undefined || row.override != undefined).map(d => d.override ?? d.mid);
   let x2 = data.filter(row => row.dv01 != undefined).map(d => d.year);
@@ -423,12 +406,13 @@ async function interpolateQuotes (rows) {
   if (y1.length < 3 || y2.length < 3) return rows; // Not enough data to interpolate
   
   // Initialize the spline with the x and y values
-  let midSpline = new CustomSpline(x1, y1, lin_interp);
-  let dv01Spline = new CustomSpline(x2, y2, lin_interp);
+  let midSpline = new Spline(x1, y1);
+  let dv01Spline = new Spline(x2, y2);
 
   for (let i = 0; i < rows.length; i++) {
     if (rows[i].dv01 == null && !rows[i].security) rows[i].dv01 = dv01Spline.at(rows[i].year);
     if (rows[i].mid == null && rows[i].override == null && !rows[i].security) rows[i].mid = midSpline.at(rows[i].year);
+    
     if (isNaN(rows[i].mid)) delete rows[i].mid;
     if (isNaN(rows[i].dv01)) delete rows[i].dv01;
   }

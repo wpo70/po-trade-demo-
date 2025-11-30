@@ -33,11 +33,9 @@
 
   let pageSize = 16;
   let openReportingModal = false;
-  let expansion = false;
+
   let permission;
-  $: {let b = $brokers; permission = user.getPermission();
-  if(permission['Not Anonymous']) expansion = true;
-  }
+  $: {let b = $brokers; permission = user.getPermission();}
 
   // PAGE NUMBER
   let appliedPage = null // this will get set by handle_tableChange() on initialisation.
@@ -188,7 +186,7 @@
     <DataTable
       title = {selectedTable}
       sortable
-      bind:batchExpansion={expansion}
+      batchExpansion
       zebra
       bind:expandedRowIds={expansions}
       size="medium"
@@ -602,13 +600,5 @@
     background-color: #121212;
     padding-right: 0;
     padding-left:0;
-  }
-
-  :global(.data-table .bx--data-table--md td){
-    text-align: center; 
-  }
-
-  :global(.data-table .bx--child-row-inner-container){
-    text-align: left;
   }
 </style>

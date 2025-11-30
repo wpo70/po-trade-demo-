@@ -12,7 +12,6 @@ const traders = (
     let anonVals = {};
     let anonBankNum = 1;
     let anonTraderNum = 1;
-    let sorted_traders = [];
     const { subscribe, set, update } = writable([]);
 
     const getTrader = function (trader_id) {
@@ -182,14 +181,6 @@ const traders = (
       return deleted_traders;
     };
 
-    const setSortedTraders = function (sorted_ts) {
-      sorted_traders = sorted_ts;
-    };
-
-    const getSortedTraders = function () {
-      return sorted_traders;
-    };
-
     return {
       subscribe,
       set,
@@ -201,9 +192,7 @@ const traders = (
       initials,
       add,
       update: updateTrader,
-      remove, 
-      setSortedTraders,
-      getSortedTraders,
+      remove
     };
   }());
 

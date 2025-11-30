@@ -6,12 +6,17 @@
       StructuredListBody,
       StructuredListCell,
       TextInput,
-      Search,
       StructuredListRow, 
       Theme, 
       TileGroup, 
-      Button,
+      Button, 
+      RadioButtonGroup, 
+      RadioButton,
+      Tooltip,
+      Tile,
+      Tag,
       StructuredListHead,
+      DataTable
   } from "carbon-components-svelte";
   import user from "../../stores/user";
   import brokers from "../../stores/brokers";
@@ -20,26 +25,52 @@
   import PasswordChange from "./PasswordChange.svelte";
   import Validator from "../../common/validator";
   import websocket from "../../common/websocket";
-  import traders from "../../stores/traders";
-  import preferences from "../../stores/preferences";
-  import CaretUp from "carbon-icons-svelte/lib/CaretUp.svelte";
-  import CaretDown from "carbon-icons-svelte/lib/CaretDown.svelte";
-  import StarFilled from "carbon-icons-svelte/lib/StarFilled.svelte";
-  import TrashCan from "carbon-icons-svelte/lib/TrashCan.svelte";
-  import DataConnections from "./DataConnections.svelte";
+  import data_collection_settings from "../../stores/data_collection_settings";
+  import ConnectionSignalOff from "carbon-icons-svelte/lib/ConnectionSignalOff.svelte";
+  import ConnectionSignal from "carbon-icons-svelte/lib/ConnectionSignal.svelte";
+  import CloseOutline from "carbon-icons-svelte/lib/CloseOutline.svelte";
 
   export let broker = undefined;
   export let open;
   
   let theme;
-  let trader_list = $traders.slice();
-  let sortedTraders = [];
-  let trader_search = "";
-  let original, hovered_over, original_index, insert_index, remove_element, c;
-  let td_element_arr = [];
-  let ft_arr = [];
 
+  let openToolTip = false;
+  let calcIRS = $data_collection_settings.calcIRS;
+  let calcOIS = $data_collection_settings.calcOIS;
+  let gwCount = $data_collection_settings.gateways.length;
+  let frequencies = {main: 'N/A', fut: 'N/A', fx: 'N/A', nonaud: 'N/A', aud: 'N/A'}
 
+  $: calcIRS = $data_collection_settings.calcIRS;  
+  $: calcOIS = $data_collection_settings.calcOIS;  
+  $: gateways = $data_collection_settings.gateways;
+  $: gwCount = $data_collection_settings.gateways.length;
+  $: {
+    switch (gwCount){
+      case 0: 
+        frequencies = {main: 'N/A', fut: 'N/A', fx: 'N/A', nonaud: 'N/A', aud: 'N/A'}
+        break;
+      case 1:
+        frequencies = {main: (20/gwCount), fut: 60, fx: 60, nonaud: 300, aud: (30/gwCount)}
+        break;
+      case 2:
+        frequencies = {main: (20/gwCount), fut: 60, fx: 60, nonaud: 120, aud: (30/gwCount)}
+        break;
+      case 3:
+        frequencies = {main: 6.67, fut: 60, fx: 60, nonaud: 120, aud: (30/gwCount)}
+        break;
+      case 4:
+        frequencies = {main: 5, fut: 30, fx: 30, nonaud: 120, aud: (30/gwCount)}
+        break;
+      case 5:
+        frequencies = {main: 4, fut: 30, fx: 30, nonaud: 120, aud: (30/gwCount)}
+        break;
+      default: // case 6 or greater
+        frequencies = {main: 4, fut: 30, fx: 30, nonaud: 120, aud: 5}
+        break;
+    }
+  }
+  
   $: {
     const event = new CustomEvent('themeChange', { detail: theme });
     window.dispatchEvent(event);
@@ -47,8 +78,9 @@
   
   // values refers to the categories on the sidebar,
   // selected is the currently selected category
-  let values = ['#Personal Settings', 'Info', 'Password', 'Theme', 'Favourite Traders' , '#Global Settings', 'Data Connections','OCO Colours'];
+  let values = ['#Personal Settings', 'Info', 'Password', 'Theme', '#Global Settings', 'Data Settings','OCO Colours'];
   let selected = values[1];
+  
   let edit = false;
   
   let fields = {
@@ -57,129 +89,7 @@
     lastname: new Validator(),
     email: new Validator(),
   };
-
   let currentuser = brokers.get(user.get());
-  let current_b = preferences.getBrokerPrefs(currentuser.broker_id);
-  let favourite_traders = current_b.trader_favourites;
-  if(favourite_traders !== null) ft_arr = ft_arr.concat(favourite_traders);  
-
-  function mapTraders() {
-    trader_list = $traders.map(trader => {
-      return {
-        name_with_bank: traders.fullName(trader),
-        ...trader
-      }
-    });
-  }
-  
-  /* 
-  These reactive functions will be called to ensure that 
-  When the traders list is changed through trader management
-  It will reflect as such
-   */
-  $: mapTraders($traders);
-  $: sortTraders($traders);
-
-  $: filterTraders(trader_search);
-
-  function filterTraders(input) {
-    if(!input) return sortTraders();
-    if(sortedTraders.length == 0) sortTraders();
-    sortedTraders = sortedTraders.filter(trader => trader.name_with_bank.toUpperCase().includes(input.toUpperCase()));
-  }
-
-  function updateTraderPrefs(t_id) {
-    if (!ft_arr.includes(t_id) && t_id) {
-      ft_arr.unshift(t_id);
-    } else {
-      ft_arr = ft_arr.filter((id) => id !== t_id);
-    }
-    websocket.favouriteCurrentTrader(ft_arr, currentuser.broker_id);
-    sortTraders();
-    sortedTraders = sortedTraders;
-    ft_arr = ft_arr;
-  }
-
-  function sortTraders() { 
-    trader_search = "";
-    sortedTraders = trader_list.slice().map(trader => ({
-        ...trader,
-        favourited: ft_arr.includes(trader.trader_id)
-    }));
-
-    //Sort traders iteratively, with priority given to favourited traders
-    sortedTraders.sort((a, b) => {
-      if (a.favourited && !b.favourited) return -1;
-      if (!a.favourited && b.favourited) return 1;
-      if (a.favourited && b.favourited) {
-          return ft_arr.indexOf(a.trader_id) - ft_arr.indexOf(b.trader_id);
-      }
-      return trader_list.findIndex(f => f.trader_id === a.trader_id) - trader_list.findIndex(f => f.trader_id === b.trader_id);
-    });
-    //Send to traders store to be updated on TraderSelector component
-    traders.setSortedTraders(sortedTraders);
-  }
-
-  function moveTrader(direction, t_id) {
-    const selected_row = (element) => element === t_id;
-    const trader_index = ft_arr.findIndex(selected_row);
-    //Ensure that there is another element before it in the array, i.e it can move up
-    if(direction == 'up' && trader_index > 0){
-      const [ el ] = ft_arr.splice(trader_index, 1);
-      ft_arr.splice(trader_index - 1, 0, el);
-      websocket.favouriteCurrentTrader(ft_arr, currentuser.broker_id);
-      //Ensure that element below it exists, and is a favourite
-    } else if (direction == 'down' && trader_index < sortedTraders.length - 1 && sortedTraders[trader_index + 1]?.favourited == true){
-      const [ el ] = ft_arr.splice(trader_index, 1);
-      ft_arr.splice(trader_index + 1, 0, el);
-      websocket.favouriteCurrentTrader(ft_arr, currentuser.broker_id);
-    }
-    sortTraders();
-    sortedTraders = sortedTraders; 
-  }
-
-  function dragStart(event) {
-    //Get the name of the trader at the start of the drag
-    let row = event.target.children[0].children[1].innerText;
-    original = sortedTraders.slice().filter(traders => traders.name_with_bank == row);
-  }
-  
-  function dragEnter(event) {
-    c = Array.from(event.target.parentNode.children);
-    
-    //Stops errors when draggable element is over the joining border between table rows
-    if(!c[1]?.innerText) return; 
-
-    hovered_over = sortedTraders.slice().filter(traders => traders.name_with_bank == c[1].innerText);
-    if (td_element_arr.length > 0) td_element_arr[0].style.border = "none";
-    td_element_arr.length = 0;  
-    //Add the tablerow to have border assigned, after all borders have been removed
-    td_element_arr.unshift(c[1].parentNode.parentNode);
-    //Restrict ability to reorder to favourited traders
-    if(ft_arr.includes(hovered_over[0].trader_id) && original[0].trader_id != hovered_over[0].trader_id && td_element_arr[0].tagName == 'TR') {
-      original_index = ft_arr.indexOf(original[0].trader_id);
-      insert_index = ft_arr.indexOf(hovered_over[0].trader_id);
-      if(insert_index > original_index) {
-        td_element_arr[0].style.borderBottom = "1px solid white";
-      } else {
-        td_element_arr[0].style.borderTop = "1px solid white";
-      }
-    }
-    //Remove flickering default "no drop icon"
-    event.preventDefault();
-  }
-  
-  function dragEnd() {
-    if(original[0].trader_id == hovered_over[0].trader_id || original_index == insert_index || !ft_arr.includes(hovered_over[0].trader_id)) return;
-    remove_element = ft_arr.splice(original_index, 1);
-    ft_arr.splice(insert_index, 0, remove_element[0]);
-    //Reset indexes to fix logic when dragging another trader after just dropping another
-    original_index = 0;
-    insert_index = 0;
-    //Sort traders and send to backend
-    return updateTraderPrefs();
-  }
-
   $: {let b = $brokers; let u = $user; currentuser = brokers.get(user.get());}
 
   $: if (currentuser) copyBrokerToForm(currentuser);
@@ -252,7 +162,6 @@
     websocket.submitBroker(broker);
     edit = false;
   }
-
 </script>
 
 <Modal passiveModal bind:open modalHeading="Settings" class="settings__modal">
@@ -263,11 +172,7 @@
           {#if value.charAt(0) == '#'}
             <h5 style="border-bottom:1px solid var(--cds-border-strong); padding:3px 1px; {i != 0 ? "margin-top:5px;" : ""}">{value.slice(1)}</h5>
           {:else}
-            {#if value == 'Favourite Traders' && currentuser.permission['View Only'] == true}
-              <RadioTile {value} disabled checked={selected === value}>Favourite Traders</RadioTile>
-            {:else}
-              <RadioTile {value} checked={selected === value}>{value}</RadioTile> 
-            {/if}
+            <RadioTile {value} checked={selected === value}>{value}</RadioTile>
           {/if}
         {/each}
       </TileGroup>
@@ -338,60 +243,76 @@
               labelText: "Theme",
             }}
           />
-        {:else if selected === 'Favourite Traders'}
-          <div class="favourite-traders" aria-label="selectable tiles" role="group">
-              <div class="favourites-header" 
-              style="background-color: #393939;font-weight:600;display: flex;flex-direction: row;">
-                <Search placeholder="Search traders" bind:value={trader_search} class="trader-search"/>
-                {#key ft_arr}
-                  <Button kind="danger-tertiary" tooltipPosition="left" iconDescription="Delete all favourites" 
-                  icon={TrashCan} on:click={() => {ft_arr.length = 0, updateTraderPrefs()}}
-                  disabled={ft_arr.length == 0}
-                  class={ft_arr.length == 0 ? "greyed" : "normal"} 
-                  style="border:none; border-bottom: 1px solid var(--cds-ui-04, #8d8d8d);"/>
-                {/key}
-              </div>
-              <div class="favourite-container">
-                {#key sortedTraders}
-                  {#each sortedTraders as t}
-                    <tr class="favourite-row draggable" draggable={t.favourited && !trader_search}
-                    on:dragstart={(event) => dragStart(event)}
-                    on:dragenter={(event) => dragEnter(event)} 
-                    on:dragend={() => dragEnd()}
-                    on:dragover={(event) => {if(ft_arr.includes(hovered_over[0].trader_id)) event.preventDefault()}}
-                    >
-                      <div class="name-favourites">
-                        <button on:click={() => updateTraderPrefs(t.trader_id)}
-                        class:favourited={t?.favourited}
-                        class:not_favourited={!t?.favourited}
-                        style="padding: 10px;">
-                        <StarFilled/>
-                        </button>
-                        <td>{t.name_with_bank}</td>
-                      </div>
-                      <div class="button-wrapper">
-                        {#if t?.favourited == true && trader_search == ""}
-                        <div class="single-move-button">
-                          <button on:click={() => {moveTrader("up", t.trader_id)}}>
-                            <CaretUp class="move_trader "/>
-                          </button>
-                          <button on:click={() => {moveTrader("down", t.trader_id)}}>
-                            <CaretDown class="move_trader"/>
-                          </button>
-                        </div>
-                        {/if}
-                      </div>
-                    </tr>
-                  {:else}
-                    <tr style="display: flex; justify-content:center;">
-                      <td>No traders found</td>
-                    </tr>
-                  {/each}
-                {/key}
-              </div>
+        {:else if selected === 'Data Settings'}
+          <div style="display: flex;">
+            <p style="padding-right: 0; margin-bottom: 20px">Gateways Connected: &nbsp&nbsp{gwCount}&nbsp&nbsp</p>
+            <!-- svelte-ignore a11y-mouse-events-have-key-events -->
+            <div on:mouseenter={() => openToolTip = true} on:mouseleave={() => openToolTip = false}>
+              <Tooltip class="freq_breakdown" bind:open={openToolTip}>
+                <table>
+                  <th colspan="2" style="text-align: center; font-weight: 700; padding-bottom: 0.5rem">Request Frequencies</th>
+                  <tr>
+                    <td>Futures (3Y, 10Y) &nbsp</td>
+                    <td>{frequencies.main} Sec</td>
+                  </tr>
+                  <tr>
+                    <td>90 Day IR Futures &nbsp</td>
+                    <td>{frequencies.fut} Sec</td>
+                  </tr>
+                  <tr>
+                    <td>FX Rates </td>
+                    <td>{frequencies.fx} Sec</td>
+                  </tr>
+                  <tr>
+                    <td>All AUD Products</td>
+                    <td>{frequencies.aud} Sec</td>
+                  </tr>
+                  <tr>
+                    <td>Non-AUD Products &nbsp</td>
+                    <td>{frequencies.nonaud} Sec</td>
+                  </tr>
+                </table>
+              </Tooltip>
+            </div>
           </div>
-        {:else if selected === 'Data Connections'}
-          <DataConnections/>
+          <DataTable
+            headers={[
+              {key: "user", value: "User"},
+              {key: "blp_connected", value: "Bloomberg"},
+              {key: "sheet_connected", value: "Spreadsheet"},
+            ]}
+            rows={gateways.length > 0 ? gateways : [{user: "", blp_connected: "No Gateways Connected", sheet_connected: ""}]}
+          >  
+            <svelte:fragment slot="cell" let:row let:cell>
+              {#if gateways.length > 0 && (cell.key == "blp_connected" || cell.key == "sheet_connected")}
+                {#if cell.value === true}
+                  <ConnectionSignal style="color: green; width: 25px; height: 25px; margin-right: 8px;"/>
+                  <Button 
+                    class="disconnect" 
+                    kind="danger-tertiary" 
+                    size="small" 
+                    iconDescription="Disconnect" 
+                    icon={CloseOutline}
+                    on:click={() => {cell.key == "blp_connected" ? websocket.disconnectGateway(row.id) : websocket.disconnectGatewaySheet(row.id)}} />
+                {:else}
+                  <ConnectionSignalOff style="color: red; width: 25px; height: 25px;"/>
+                {/if}
+              {:else}
+                {cell.value}
+              {/if}
+            </svelte:fragment>
+          </DataTable>
+          <div class="dataSourceOptions">
+            <RadioButtonGroup selected={calcIRS} legendText="IRS Mid Source">
+              <RadioButton value={true} labelText="Calculate from EFP" on:change={() => websocket.setCalcIRS(true)}/>
+              <RadioButton value={false} labelText="Bloomberg" on:change={() => websocket.setCalcIRS(false)}/>
+            </RadioButtonGroup>
+  
+            <RadioButtonGroup selected={calcOIS} legendText="Short-end OIS Mid Source">
+              <RadioButton value={true} labelText="POCM Pricer" on:change={() => websocket.setCalcOIS(true)}/>
+              <RadioButton value={false} labelText="Bloomberg" on:change={() => websocket.setCalcOIS(false)}/>
+            </RadioButtonGroup>
+          </div>
         {:else if selected === 'OCO Colours'}
           <StructuredList condensed flush style="margin-bottom:0px;">
             <StructuredListHead>
@@ -438,12 +359,39 @@
     width: 70%;
     margin-left: 20px;
     overflow: scroll;
-    max-height: 620px;
+    max-height: 390px;
   }
 
   :global(.settings__modal > .bx--modal-container) {
-    height: 750px;
-    width: 870px;
+    height: 500px;
+    width: 580px;
+  }
+
+  td {
+    white-space: nowrap;
+  }
+  :global(.freq_breakdown .bx--tooltip) {
+    background-color: var(--cds-ui-02);
+    color: var(--cds-text-primary);
+  }
+  :global(.freq_breakdown .bx--tooltip .bx--tooltip__caret) {
+    border-bottom: 0.4296875rem solid var(--cds-ui-02);
+  }
+  :global(.disconnect .bx--assistive-text) {
+    background-color: var(--cds-ui-02) !important;
+    color: var(--cds-text-primary) !important;
+  }
+  :global(.disconnect)::before {
+    border-bottom: 0.4296875rem solid var(--cds-ui-02) !important;
+  }
+
+  :global(.bx--radio-button-group) {
+    margin-top: 20px;
+  }
+
+  :global(.dataSourceOptions .bx--radio-button__label) {
+    width: 155px;
+    justify-content: left;
   }
 
   .oco_colour_selector {
@@ -452,109 +400,4 @@
     height: 2.2rem;
     background-color: #00000000;
   }
-  
-  .favourite-row:hover {
-    background: var(--cds-layer-hover, #e5e5e5);
-    color: var(--cds-text-primary, #161616);
-  }
-  
-  .favourite-container > tr > .name-favourites > td {
-    width: 400px;
-    height:100%;
-    display:flex;
-    justify-content: flex-start;
-    align-items:center;
-    user-select: none;
-  }
-
-  :global(.button-wrapper > button){
-    font-size: 10px;
-  }
-
-  .favourited, .not_favourited:hover {
-    color: yellow !important
-  }
-  
-  .favourited:hover {
-    opacity: 30%;
-  }
-  
-  .favourited, .not_favourited {
-    transition: all .3s ease-in-out;
-  }
-
-  .favourite-container > tr, .name-favourites, 
-  .favourited, .not_favourited, :global(.button-wrapper > button, .move_trader, .button-wrapper),
-  .single-move-button {
-    display:flex;
-    align-items: center;
-    padding-right: 3px;
-  }
-
-  .name-favourites, .favourite-container > tr {
-    flex-direction: row;
-    justify-content: space-between;
-  }
-  
-  .favourite-container > tr{
-    height:50px;
-    padding: 0 15px 0 10px;
-  }
-
-  .name-favourites { 
-    gap:20px;
-    height:100%;
-  }
-
-  .favourited, .not_favourited, :global(.button-wrapper > button, .move_trader), .single-move-button{
-    justify-content: center;
-  }
-
-  .single-move-button {
-    flex-direction: column;
-    height: 50px;
-    padding: 0;
-  }
-
-  .single-move-button > button:hover {
-    transition: background-color .15s ease-in;
-    cursor: pointer;
-    background-color:grey;
-  }
-
-  :global(.not_favourited:hover, .favourited:hover) {
-    cursor: pointer;
-  }
-
-  .name-favourites > button, .button-wrapper > div > button {
-    background-color:transparent;
-    border:none;
-    color: white;
-  }
-
-  .single-move-button > button {
-    height:25px;
-    width: 25px;
-  }
-
-  :global(.favourites-header > div > .bx--search-close::before) {
-    background-color: transparent !important;
-  }
-
-  tr[draggable="true"] {
-    cursor: grab !important;
-  }
-
-  tr[draggable="true"]:active {
-    cursor: grabbing !important;
-  }
-
-  :global(.greyed) {
-    color: var(--cds-disabled-02);
-  }
-
-  :global(.normal) {
-    color: var(--cds-danger-02);
-  }
-
 </style>

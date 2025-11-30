@@ -6,7 +6,6 @@ import { writable, get } from 'svelte/store';
 import traders from './traders';
 import user from './user';
 import brokers from './brokers';
-import products from './products';
 /**
  * @typedef {Object} bic
  * @property {number} id
@@ -99,9 +98,9 @@ const bic = (function () {
         const code = Branch[idx];
         if(['BNPAFRPP', 'DEUTDEFF', 'DEUTGB2L', 'UBSWAU2SXXX'].includes(code.markitbiccode)){ // TODO add new special case bic codes here
           SpecialCases.push(code);
+          Branch.splice(idx, 1);
         }
       }
-      Branch = Branch.filter((b) => !SpecialCases.includes(b.markitbiccode))
       return {DCL, Branch, SpecialCases};
     }
 
@@ -109,7 +108,7 @@ const bic = (function () {
     // Rule: xccy products must use non DCL codes
 
     const Rule_XCCY = function() {
-      if(products.isXccy(productId)) { 
+      if([7, 8, 9].includes(productId)) { 
         const bid_Branch = DCL_nonDCL(bid_codes).Branch;
         const offer_Branch = DCL_nonDCL(offer_codes).Branch;
         set_bic_bid( bid_Branch[0] );
@@ -142,17 +141,18 @@ const bic = (function () {
     function getDBCode(trader_id, DB_codes){
       const SpecialCases = DCL_nonDCL(DB_codes).SpecialCases;
 
-      let deutsche_ld_Traders = [77]; // FIXME Add all Deutsche Frankfurt traders once they are onboarded. Not Deutsche London
-      if(deutsche_ld_Traders.includes(trader_id)){  
-        return SpecialCases.find(code => /GB2L/gm.test(code.markitbiccode));
+      let deutsche_ff_Traders = [78, 79]; // FIXME Add all Deutsche Frankfurt traders once they are onboarded. Not Deutsche London
+      if(deutsche_ff_Traders.includes(trader_id)){  
+        // frankfurt trader = true
+        return SpecialCases.find(code => /FF/gm.test(code.markitbiccode));
       }
-      return SpecialCases.find(code => /FF/gm.test(code.markitbiccode)); // frankfurt assumed, if not London
+      return SpecialCases.find(code => /GB2L/gm.test(code.markitbiccode)); // London assumed if not frankfurt
     }
 
     const Rule_DEUT = function() {
       if(bank_bid == 25){
         set_bic_bid( getDBCode(bid_trader_id, bid_codes) );
-      }
+      } 
       else if(bank_offer == 25){
         set_bic_offer( getDBCode(offer_trader_id, offer_codes) );
       }

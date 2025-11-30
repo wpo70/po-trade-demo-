@@ -13,8 +13,10 @@
   $: ticket.clearhouse = CHBool ? "ASX" : "LCH";
 
   function getSef() {
-    let sef_offer = bank_divisions.get(ticket.offer_bank_division_id).sef;
-    let sef_bid = bank_divisions.get(ticket.bid_bank_division_id).sef;
+    let offer_div = bank_divisions.get(ticket.offer_bank_division_id);
+    let bid_div = bank_divisions.get(ticket.bid_bank_division_id);
+    let sef_offer = offer_div?.sef ?? false;
+    let sef_bid = bid_div?.sef ?? false;
     if (sef_bid === true || sef_offer === true) {
       return true;
     } else {
@@ -22,8 +24,10 @@
     }
   }
   function getCH() {
-    let CH_offer = bank_divisions.get(ticket.offer_bank_division_id).clearhouse;
-    let CH_bid = bank_divisions.get(ticket.bid_bank_division_id).clearhouse;
+    let offer_div = bank_divisions.get(ticket.offer_bank_division_id);
+    let bid_div = bank_divisions.get(ticket.bid_bank_division_id);
+    let CH_offer = offer_div?.clearhouse ?? "LCH";
+    let CH_bid = bid_div?.clearhouse ?? "LCH";
     if (CH_bid === "ASX" && CH_offer === "ASX") {
       return true;
     } else {

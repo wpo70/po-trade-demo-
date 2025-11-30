@@ -93,6 +93,9 @@ class Order extends Interest {
     }
   }
 
+  isConfirmed () {
+    return this.confirmed;
+  }
 }
 
 export default Order;

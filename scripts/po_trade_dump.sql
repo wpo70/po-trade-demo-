@@ -18,7 +18,7 @@ SET client_min_messages = warning;
 -- Name: public; Type: SCHEMA; Schema: -; Owner: postgres
 --
 
-CREATE SCHEMA public;
+CREATE SCHEMA IF NOT EXISTS public;
 
 
 ALTER SCHEMA public OWNER TO postgres;
@@ -277,8 +277,8 @@ ALTER SEQUENCE public.quotes_quote_id_seq OWNED BY public.quotes.quote_id;
 
 CREATE TABLE public.tickers (
     ticker_id integer NOT NULL,
-    property character varying NOT NULL,
-    security character varying NOT NULL
+    property character varying,
+    security character varying
 );
 
 
@@ -313,7 +313,7 @@ CREATE TABLE public.traders (
     trader_id integer NOT NULL,
     firstname character varying,
     lastname character varying,
-    preferredname character varying,
+    code character varying,
     bank_id integer
 );
 
@@ -396,68 +396,62 @@ ALTER TABLE ONLY public.traders ALTER COLUMN trader_id SET DEFAULT nextval('publ
 
 INSERT INTO public.banks VALUES (1, 'CBA');
 INSERT INTO public.banks VALUES (2, 'WBC');
-INSERT INTO public.banks VALUES (3, 'NAB');
-INSERT INTO public.banks VALUES (4, 'JPM');
-INSERT INTO public.banks VALUES (5, 'ANZ');
-INSERT INTO public.banks VALUES (6, 'BARC');
-INSERT INTO public.banks VALUES (7, 'CIT');
-INSERT INTO public.banks VALUES (8, 'JEF');
-INSERT INTO public.banks VALUES (9, 'NOM');
-INSERT INTO public.banks VALUES (10, 'BAML');
-INSERT INTO public.banks VALUES (11, 'BNP');
-INSERT INTO public.banks VALUES (12, 'HSBC');
-INSERT INTO public.banks VALUES (13, 'GS');
-INSERT INTO public.banks VALUES (14, 'UBS');
-INSERT INTO public.banks VALUES (15, 'ING');
+INSERT INTO public.banks VALUES (3, 'ANZ');
+INSERT INTO public.banks VALUES (4, 'NAB');
+INSERT INTO public.banks VALUES (5, 'Macquarie');
+INSERT INTO public.banks VALUES (6, 'Citi');
+INSERT INTO public.banks VALUES (7, 'BNP');
+INSERT INTO public.banks VALUES (8, 'HSBC');
+INSERT INTO public.banks VALUES (9, 'JP Morgan');
+INSERT INTO public.banks VALUES (10, 'UBS');
+INSERT INTO public.banks VALUES (11, 'Nomura');
+INSERT INTO public.banks VALUES (12, 'Standard Chartered');
+INSERT INTO public.banks VALUES (13, 'Morgan Stanley');
+INSERT INTO public.banks VALUES (14, 'Societe Generale');
+INSERT INTO public.banks VALUES (15, 'Mizuho');
 
 
 --
 -- Data for Name: brokers; Type: TABLE DATA; Schema: public; Owner: potrade
 --
 
-INSERT INTO public.brokers VALUES (1, 'Will', 'Parry-Okeden', 'will', 'will1');
-INSERT INTO public.brokers VALUES (2, 'Richard', 'Powell', 'richard', 'richard1');
-INSERT INTO public.brokers VALUES (3, 'Matt', 'Patrick', 'matt', 'matt1');
-INSERT INTO public.brokers VALUES (4, 'Mal', 'Goris', 'mal', 'mal1');
-INSERT INTO public.brokers VALUES (5, 'Adam', 'Goris', 'adam', 'adam1');
+INSERT INTO public.brokers VALUES (1, 'Bill', 'William', 'admin', 'A$%$hy67bh098765', 1);
+INSERT INTO public.brokers VALUES (2, 'Po', 'Bot', 'POBot', 'gatewaycredentials', 1);
+INSERT INTO public.brokers VALUES (3, 'Sai', 'Varma', 'SaiVarma', 'SVWilCok$12&', 2);
+INSERT INTO public.brokers VALUES (4, 'Kim', 'Sim', 'KimSim', 'KSWilCok$123', 2);
+INSERT INTO public.brokers VALUES (5, 'Jamie', 'Caleb', 'JamieCaleb', 'JCWilCok$123', 2);
 
 
 --
 -- Data for Name: orders; Type: TABLE DATA; Schema: public; Owner: potrade
 --
 
-INSERT INTO public.orders VALUES (1, 1, true, true, '{2,3}', 1, 140, 3, 2, '2021-04-15 16:19:51.302325+10', NULL);
-INSERT INTO public.orders VALUES (2, 1, false, true, '{2,3,4}', 0.100000000000000006, 105, 6, 1, '2021-04-15 16:19:51.302325+10', NULL);
-INSERT INTO public.orders VALUES (3, 1, true, true, '{5,7,10}', -1.10000000000000009, 35, 8, 4, '2021-04-15 16:19:51.302325+10', NULL);
-INSERT INTO public.orders VALUES (4, 1, true, true, '{5}', 4.95000000000000018, 92, 1, 3, '2021-04-15 16:19:51.302325+10', NULL);
-INSERT INTO public.orders VALUES (5, 1, true, true, '{10}', 9.94999999999999929, 35, 7, 2, '2021-04-15 16:19:51.302325+10', NULL);
-INSERT INTO public.orders VALUES (6, 1, false, false, '{7}', 7, 72, 4, 1, '2021-04-15 16:19:51.302325+10', NULL);
 
 
 --
 -- Data for Name: products; Type: TABLE DATA; Schema: public; Owner: potrade
 --
 
-INSERT INTO public.products VALUES (1, 'IRS');
-INSERT INTO public.products VALUES (2, 'EFP');
-INSERT INTO public.products VALUES (3, '6v3');
-INSERT INTO public.products VALUES (4, '3v1');
-INSERT INTO public.products VALUES (5, 'AUD/USD');
-INSERT INTO public.products VALUES (6, 'OIS');
-INSERT INTO public.products VALUES (7, 'BOB');
+INSERT INTO public.products VALUES (1, 'BBSW');
+INSERT INTO public.products VALUES (2, 'AUD Basis');
+INSERT INTO public.products VALUES (3, 'AUDNZD Basis');
+INSERT INTO public.products VALUES (4, '30/90');
+INSERT INTO public.products VALUES (5, 'FRA');
+INSERT INTO public.products VALUES (6, 'SONIA');
+INSERT INTO public.products VALUES (7, 'AUD-BBSW-CORRA');
 
 
 --
 -- Data for Name: quotes; Type: TABLE DATA; Schema: public; Owner: potrade
 --
 
-INSERT INTO public.quotes VALUES (1, 1, 0.25, 0.25, 0.25, 'ADSOC Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (2, 1, 0.5, 0.5, 0.5, 'ADSWQF Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (3, 1, 0.75, 0.75, 0.75, 'ADSWQI Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (4, 1, 1, 1, 1, 'ADSWAP1Q Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (1, 1, 0.25, 0.25, 0.25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (2, 1, 0.5, 0.5, 0.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (3, 1, 0.75, 0.75, 0.75, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (4, 1, 1, 1, 1, 'ADSWAP1 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (5, 1, 1.5, 1.5, 1.5, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (6, 1, 2, 2, 2, 'ADSWAP2Q Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (7, 1, 3, 3, 3, 'ADSWAP3Q Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (6, 1, 2, 2, 2, 'ADSWAP2 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (7, 1, 3, 3, 3, 'ADSWAP3 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (8, 1, 4, 4, 4, 'ADSWAP4 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (9, 1, 5, 5, 5, 'ADSWAP5 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (10, 1, 6, 6, 6, 'ADSWAP6 Curncy', NULL, false, false);
@@ -465,100 +459,100 @@ INSERT INTO public.quotes VALUES (11, 1, 7, 7, 7, 'ADSWAP7 Curncy', NULL, false,
 INSERT INTO public.quotes VALUES (12, 1, 8, 8, 8, 'ADSWAP8 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (13, 1, 9, 9, 9, 'ADSWAP9 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (14, 1, 10, 10, 10, 'ADSWAP10 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (15, 1, 11, 11, 11, 'ADSWAP11 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (15, 1, 11, 11, 11, '', NULL, false, false);
 INSERT INTO public.quotes VALUES (16, 1, 12, 12, 12, 'ADSWAP12 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (17, 1, 13, 13, 13, 'ADSWAP13 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (18, 1, 14, 14, 14, 'ADSWAP14 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (17, 1, 13, 13, 13, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (18, 1, 14, 14, 14, '', NULL, false, false);
 INSERT INTO public.quotes VALUES (19, 1, 15, 15, 15, 'ADSWAP15 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (20, 1, 20, 20, 20, 'ADSWAP20 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (21, 1, 25, 25, 25, 'ADSWAP25 Curncy', NULL, false, false);
 INSERT INTO public.quotes VALUES (22, 1, 30, 30, 30, 'ADSWAP30 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (23, 2, 2, 2, 2, 'ADSF2 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (24, 2, 3, 3, 3, 'ADSF3 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (25, 2, 4, 4, 4, 'ADSF4 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (26, 2, 5, 5, 5, 'ADSF5 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (27, 2, 6, 6, 6, 'ADSF6 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (28, 2, 7, 7, 7, 'ADSF7 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (29, 2, 8, 8, 8, 'ADSF8 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (30, 2, 9, 9, 9, 'ADSF9 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (31, 2, 10, 10, 10, 'ADSF10 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (32, 2, 11, 11, 11, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (33, 2, 12, 12, 12, 'ADSF12 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (34, 2, 13, 13, 13, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (35, 2, 14, 14, 14, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (36, 2, 15, 15, 15, 'ADSF15 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (37, 2, 20, 20, 20, 'ADSF20 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (38, 2, 25, 25, 25, 'ADSF25 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (39, 2, 30, 30, 30, 'ADSF30 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (40, 3, 0.5, 0.5, 0.5, 'ADBBCFF Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (41, 3, 1, 1, 1, 'ADBBCF1 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (42, 3, 2, 2, 2, 'ADBBCF2 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (43, 3, 3, 3, 3, 'ADBBCF3 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (44, 3, 4, 4, 4, 'ADBBCF4 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (45, 3, 5, 5, 5, 'ADBBCF5 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (46, 3, 6, 6, 6, 'ADBBCF6 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (47, 3, 7, 7, 7, 'ADBBCF7 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (48, 3, 8, 8, 8, 'ADBBCF8 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (49, 3, 9, 9, 9, 'ADBBCF9 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (50, 3, 10, 10, 10, 'ADBBCF10 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (51, 3, 11, 11, 11, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (52, 3, 12, 12, 12, 'ADBBCF12 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (53, 3, 13, 13, 13, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (54, 3, 14, 14, 14, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (55, 3, 15, 15, 15, 'ADBBCF15 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (56, 3, 20, 20, 20, 'ADBBCF20 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (57, 3, 25, 25, 25, 'ADBBCF25 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (58, 3, 30, 30, 30, 'ADBBCF30 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (59, 4, 0.25, 0.25, 0.25, 'ADBBCAC Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (60, 4, 0.5, 0.5, 0.5, 'ADBBCAF Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (61, 4, 0.75, 0.75, 0.75, 'ADBBCAI Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (62, 4, 1, 1, 1, 'ADBBCA1 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (63, 4, 2, 2, 2, 'ADBBCA2 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (64, 4, 3, 3, 3, 'ADBBCA3 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (65, 4, 4, 4, 4, 'ADBBCA4 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (66, 4, 5, 5, 5, 'ADBBCA5 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (67, 4, 7, 7, 7, 'ADBBCA7 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (68, 4, 10, 10, 10, 'ADBBCA10 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (69, 4, 11, 11, 11, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (70, 4, 12, 12, 12, 'ADBBCA12 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (71, 4, 13, 13, 13, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (72, 4, 14, 14, 14, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (73, 4, 15, 15, 15, 'ADBBCA15 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (74, 4, 20, 20, 20, 'ADBBCA20 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (75, 4, 25, 25, 25, 'ADBBCA25 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (76, 4, 30, 30, 30, 'ADBBCA30 Curncy ', NULL, false, false);
-INSERT INTO public.quotes VALUES (77, 5, 0.25, 0.25, 0.25, 'ADBSC Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (78, 5, 0.5, 0.5, 0.5, 'ADBSF Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (79, 5, 0.75, 0.75, 0.75, 'ADBSI Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (80, 5, 1, 1, 1, 'ADBS1 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (81, 5, 1.5, 1.5, 1.5, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (82, 5, 2, 2, 2, 'ADBS2 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (83, 5, 3, 3, 3, 'ADBS3 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (84, 5, 4, 4, 4, 'ADBS4 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (85, 5, 5, 5, 5, 'ADBS5 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (86, 5, 6, 6, 6, 'ADBS6 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (87, 5, 7, 7, 7, 'ADBS7 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (88, 5, 8, 8, 8, 'ADBS8 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (89, 5, 9, 9, 9, 'ADBS9 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (90, 5, 10, 10, 10, 'ADBS10 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (91, 5, 11, 11, 11, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (92, 5, 12, 12, 12, 'ADBS12 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (93, 5, 13, 13, 13, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (94, 5, 14, 14, 14, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (95, 5, 15, 15, 15, 'ADBS15 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (96, 5, 20, 20, 20, 'ADBS20 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (97, 5, 25, 25, 25, 'ADBS25 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (98, 5, 30, 30, 30, 'ADBS30 Curncy', NULL, false, false);
-INSERT INTO public.quotes VALUES (99, 6, 0.25, 0.25, 0.25, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (100, 6, 0.5, 0.5, 0.5, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (101, 6, 0.75, 0.75, 0.75, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (102, 6, 1, 1, 1, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (103, 6, 1.5, 1.5, 1.5, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (104, 6, 2, 2, 2, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (105, 6, 3, 3, 3, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (106, 6, 4, 4, 4, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (107, 6, 5, 5, 5, '', NULL, false, false);
-INSERT INTO public.quotes VALUES (108, 6, 6, 6, 6, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (23, 2, 0.25, 0.25, 0.25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (24, 2, 0.5, 0.5, 0.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (25, 2, 0.75, 0.75, 0.75, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (26, 2, 1, 1, 1, 'ADBASIS1 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (27, 2, 1.5, 1.5, 1.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (28, 2, 2, 2, 2, 'ADBASIS2 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (29, 2, 3, 3, 3, 'ADBASIS3 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (30, 2, 4, 4, 4, 'ADBASIS4 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (31, 2, 5, 5, 5, 'ADBASIS5 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (32, 2, 6, 6, 6, 'ADBASIS6 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (33, 2, 7, 7, 7, 'ADBASIS7 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (34, 2, 8, 8, 8, 'ADBASIS8 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (35, 2, 9, 9, 9, 'ADBASIS9 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (36, 2, 10, 10, 10, 'ADBASIS10 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (37, 2, 11, 11, 11, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (38, 2, 12, 12, 12, 'ADBASIS12 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (39, 2, 13, 13, 13, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (40, 2, 14, 14, 14, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (41, 2, 15, 15, 15, 'ADBASIS15 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (42, 2, 20, 20, 20, 'ADBASIS20 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (43, 2, 25, 25, 25, 'ADBASIS25 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (44, 2, 30, 30, 30, 'ADBASIS30 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (45, 3, 0.25, 0.25, 0.25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (46, 3, 0.5, 0.5, 0.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (47, 3, 0.75, 0.75, 0.75, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (48, 3, 1, 1, 1, 'ANZXBSA1 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (49, 3, 1.5, 1.5, 1.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (50, 3, 2, 2, 2, 'ANZXBSA2 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (51, 3, 3, 3, 3, 'ANZXBSA3 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (52, 3, 4, 4, 4, 'ANZXBSA4 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (53, 3, 5, 5, 5, 'ANZXBSA5 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (54, 3, 6, 6, 6, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (55, 3, 7, 7, 7, 'ANZXBSA7 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (56, 3, 8, 8, 8, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (57, 3, 9, 9, 9, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (58, 3, 10, 10, 10, 'ANZXBSA10 Curncy', NULL, false, false);
+INSERT INTO public.quotes VALUES (59, 3, 11, 11, 11, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (60, 3, 12, 12, 12, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (61, 3, 13, 13, 13, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (62, 3, 14, 14, 14, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (63, 3, 15, 15, 15, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (64, 3, 20, 20, 20, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (65, 3, 25, 25, 25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (66, 3, 30, 30, 30, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (67, 4, 0.25, 0.25, 0.25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (68, 4, 0.5, 0.5, 0.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (69, 4, 0.75, 0.75, 0.75, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (70, 4, 1, 1, 1, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (71, 4, 1.5, 1.5, 1.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (72, 4, 2, 2, 2, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (73, 4, 3, 3, 3, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (74, 4, 4, 4, 4, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (75, 4, 5, 5, 5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (76, 4, 6, 6, 6, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (77, 4, 7, 7, 7, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (78, 4, 8, 8, 8, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (79, 4, 9, 9, 9, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (80, 4, 10, 10, 10, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (81, 4, 11, 11, 11, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (82, 4, 12, 12, 12, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (83, 4, 13, 13, 13, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (84, 4, 14, 14, 14, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (85, 4, 15, 15, 15, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (86, 4, 20, 20, 20, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (87, 4, 25, 25, 25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (88, 4, 30, 30, 30, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (89, 5, 0.25, 0.25, 0.25, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (90, 5, 0.5, 0.5, 0.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (91, 5, 0.75, 0.75, 0.75, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (92, 5, 1, 1, 1, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (93, 5, 1.5, 1.5, 1.5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (94, 5, 2, 2, 2, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (95, 5, 3, 3, 3, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (96, 5, 4, 4, 4, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (97, 5, 5, 5, 5, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (98, 5, 6, 6, 6, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (99, 5, 7, 7, 7, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (100, 5, 8, 8, 8, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (101, 5, 9, 9, 9, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (102, 5, 10, 10, 10, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (103, 5, 11, 11, 11, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (104, 5, 12, 12, 12, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (105, 5, 13, 13, 13, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (106, 5, 14, 14, 14, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (107, 5, 15, 15, 15, '', NULL, false, false);
+INSERT INTO public.quotes VALUES (108, 5, 20, 20, 20, '', NULL, false, false);
 INSERT INTO public.quotes VALUES (109, 6, 7, 7, 7, '', NULL, false, false);
 INSERT INTO public.quotes VALUES (110, 6, 8, 8, 8, '', NULL, false, false);
 INSERT INTO public.quotes VALUES (111, 6, 9, 9, 9, '', NULL, false, false);
@@ -827,4 +821,3 @@ ALTER TABLE ONLY public.traders
 --
 -- PostgreSQL database dump complete
 --
-

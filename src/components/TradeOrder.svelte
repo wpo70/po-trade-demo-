@@ -82,8 +82,10 @@ $: if (traders.name(order.trader_id).split(" ")[0] == "Trader"){
   trader_name = trader.lastname === '' ? trader.firstname : trader.lastname;
 }
 let trader_bank_divisions = bank_divisions.getBankDivisions(trader.bank_id);
+let volume;
 let brokerage = trade.getBrokerage(order.order_id, bid);
-$: volume = trade.getOrderVolume(order.order_id, bid);
+let order_confirmed = order.confirmed;
+let manuallyConfirmed = false; // Flag to track manual checkbox changes
 
 $: checkForBrokerage(trade.bid_brokerage, trade.offer_brokerage);
 
@@ -92,6 +94,52 @@ function checkForBrokerage () {
   if (bro != null) {
     brokerage = bro;
   }
+}
+
+$: {
+  volume = trade.getOrderVolume(order.order_id, bid);
+  // Only update from store if not manually changed
+  if (!manuallyConfirmed) {
+    let storedOrder = orders.get(order.order_id);
+    order_confirmed = storedOrder?.confirmed ?? false;
+  }
+}
+
+// Function to determine whether a confirm checkbox should be shown on this order
+
+function shouldShowCheckbox() {
+  if (order.isOutright()
+  || (order.isSpread() && order.spreadLeg(trade.year) === 'long')
+  || (order.isButterfly() && order.butterflyLeg(trade.year) === 'body')) {
+    return true;
+  }
+
+  return false;
+}
+
+// Handle change on the checkbox
+
+async function checkOrder(e) {
+  // realistically, all that needs to be passed is the order_id and confirmed,
+  // however psql throws an error when only those are passed, so pass
+  // through the broker_id aswell
+
+  // Update local state immediately so checkbox doesn't reset
+  order_confirmed = e.detail;
+  manuallyConfirmed = true; // Prevent reactive block from overwriting
+  
+  // CRITICAL: Update the actual order object so trades.allOrdersConfirmed() works
+  order.confirmed = e.detail;
+
+  let updated_order = {
+    order_id: order.order_id,
+    broker_id: order.broker_id,
+    confirmed: e.detail
+  };
+
+  websocket.submitOrder(updated_order);
+  await new Promise(res => setTimeout(res, 10));
+  dispatch('confirmed');
 }
 
 function overrideVol() {
@@ -125,7 +173,7 @@ function getOrderVol(ovr) {
   }
 
   let at_year = order.years[1];
-  let vol = quotes.volumeAt(order.product_id, at_year, ovr, trade.year, $currency_state);
+  let vol = quotes.volumeAt(order.product_id, at_year, ovr, trade.year, currency_state.get_cur());
 
   if (order.isButterfly()) vol *= 2;
 
@@ -140,6 +188,16 @@ function handleBlurBro () {
 
 <div class="bo-header">
   <p class="bank-trader">&nbsp{bank} ({trader_name})</p>
+  {#if shouldShowCheckbox()}
+    <Checkbox 
+      labelText="confirm" 
+      hideLabel 
+      style={"margin: 0; float: right;"}
+      checked={order_confirmed}
+      disabled={reviewExists}
+      on:check={(e) => checkOrder(e)}
+    />
+  {/if}
 </div>
 <div class="bank-cpty">
   <div class="bank-div">

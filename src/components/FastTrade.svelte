@@ -52,7 +52,6 @@ export let canDelete = false;
 export let isInterest = false;
 export let ctxMenuTarget = null;
 
-
 let modals_ft_div;
 let click_within_f;
 let click_within_t;
@@ -79,27 +78,22 @@ let showTrade = false;
 let showTicket = false;
 let tickets = [];
 let tradesComponent;
+let orderFirm = true;
 let start_date;
 const dispatch = createEventDispatcher();
 let selected = {};
 
-$: setSelected(order_ft);
-
-//Selected updates when dv01/vol is changed from editable legs
-function setSelected() {
-  if (showForm || showTrade) { return; }
-  selected={
-    order_id: isInterest ? order_ft.order_id : 0,
-    bid: isInterest ? bid_ft : !bid_ft,
-    firm: order_ft.firm,
-    years: year_ft,
-    price: price_ft,
-    volume: vol_ft,
-    fwd: order_ft.fwd,
-    product_id: product_id,
-    start_date: order_ft.start_date,
-    trader_id: isInterest ? order_ft.trader_id : undefined
-  }
+selected={
+  order_id: isInterest ? order_ft.order_id : 0,
+  bid: isInterest ? bid_ft : !bid_ft,
+  firm: order_ft.firm,
+  years: year_ft,
+  price: price_ft,
+  volume: vol_ft,
+  fwd: order_ft.fwd,
+  product_id: product_id,
+  start_date: order_ft.start_date,
+  trader_id: isInterest ? order_ft.trader_id : undefined
 }
 
 checkforTrade(true);
@@ -116,6 +110,8 @@ async function closeTrade(t) {
 }
 
 $: checkforTrade(false, order_ft);
+
+$: orderFirm = order_ft.firm;
 
 let refresh = 0;
 
@@ -149,7 +145,6 @@ async function onRightClick(e) {
         showForm = false;
         await new Promise(res => setTimeout(res, 10));
     }
-    selected.firm = true;
     showForm = true;
 }
 
@@ -335,8 +330,8 @@ async function afterSubmit () {
     for (let trade of trades.trades) {
       // Set the indicator of the given product_id and year to trade price
 
-      indicator = quotes.get(trades.product_id, trade.year, $currency_state);
-      websocket.overrideQuote(indicator, trade.price, $currency_state);
+      indicator = quotes.get(trades.product_id, trade.year, currency_state.get_cur());
+      websocket.overrideQuote(indicator, trade.price, currency_state.get_cur());
     }
   }
 
@@ -390,7 +385,14 @@ async function afterSubmit () {
   let approvedByMe = false;
   let pendingApproval = false;
   let invalidReviewers = false;
-
+  let gotFuturesAccounts = (tickets) => {
+    if (products.isFuturesProd(order_ft.product_id)) {
+      for (let ticket of tickets.tickets) {
+        if (!ticket.offer_fut_acc || !ticket.bid_fut_acc) return false;
+      }
+    }
+    return true;
+  }
   $: {
     let t = $trade_reviews;
     if (trades) {
@@ -405,10 +407,13 @@ async function afterSubmit () {
   $: invalidReviewers = !(reviewer1 != -1 && reviewer2 != -1 && reviewer1 != reviewer2);
   let openReviewModal = false; 
   let openApproveModal = false;
+  let reviewersList1 = [];
+  let reviewersList2 = [];
   let reviewer1 = -1;
   let reviewer2 = -1;
   
-  $: reviewersList = $brokers.filter((b) => b.active && b.permission["Approve Trades"] && !b.permission["Developer Override"]);
+  $: reviewersList1 = $brokers.filter((b) => b.active && b.permission["Approve Trades"] && !b.permission["Developer Override"] && b.broker_id != reviewer2);
+  $: reviewersList2 = $brokers.filter((b) => b.active && b.permission["Approve Trades"] && !b.permission["Developer Override"] && b.broker_id != reviewer1);
 
   let me = user.get();
   let devOverride = (brokers.get(me).permission["Developer Override"]);
@@ -423,7 +428,7 @@ async function afterSubmit () {
     trades.time_closed = timestamp;
   
     for (let trade of trades.trades) {
-      trade.currency = $currency_state;
+      trade.currency = currency_state.get_cur();
     }
 
     // Convert trades to tickets
@@ -544,7 +549,7 @@ let selection = [];
           on:click={() => {onRightClick();}}
         />
       <!-- View Trade -->
-        {#if order_ft.firm}
+        {#if orderFirm}
           <ContextMenuOption
             icon={CertificateCheck}
             id="trade"
@@ -643,10 +648,10 @@ let selection = [];
     >
       {#if tradeExists}
         <Trades {trades} bind:leftover_bool={leftover_bool} bind:leftover_err_message={leftover_err_message} bind:refresh={refresh}
-            fromWhiteboard={true} on:openticket={handleTickets} bind:this={tradesComponent}
-            on:handleRequestReview={handleRequestReview} on:handleReview={handleReview}/>
+                fromWhiteboard={true} on:openticket={handleTickets} bind:this={tradesComponent} on:cancel={() => {showTrade = false; dispatch("close");}}
+                on:handleRequestReview={handleRequestReview} on:handleReview={handleReview}/>
       {:else}
-        <OrderForm 
+          <OrderForm 
             {selected}  
             {order_ft}
             opposingOrder={true}
@@ -664,7 +669,6 @@ let selection = [];
       on:close={() => openApproveModal = false}
       primaryButtonText="Approve Ticket"
       secondaryButtonText="Reject Ticket"
-      preventCloseOnClickOutside
       
       on:click:button--secondary={rejectTrade}
       on:click:button--primary={approveTrade}
@@ -684,9 +688,10 @@ let selection = [];
       on:open
       on:close={openReviewModal = false}
       primaryButtonText="Confirm"
+      secondaryButtonText="Cancel"
+      on:click:button--secondary={() => (openReviewModal = false)}
       on:click:button--primary={sendReview}
       primaryButtonDisabled={invalidReviewers}
-      preventCloseOnClickOutside
     >
       <div style="width: 36vw;">
         <div class="ticket">
@@ -699,7 +704,7 @@ let selection = [];
                 bind:selected={reviewer1}
             >
               <SelectItem value={-1} text={"Please Select"} hidden />
-              {#each reviewersList.filter(b => b.broker_id != reviewer2) as r (r.broker_id)}
+              {#each reviewersList1 as r (r.broker_id)}
                   <SelectItem value={r.broker_id} text={brokers.name(r.broker_id)} />
               {/each}  
             </Select>
@@ -711,7 +716,7 @@ let selection = [];
                 bind:selected={reviewer2}
             >
               <SelectItem value={-1} text={"Please Select"} hidden />
-              {#each reviewersList.filter(b => b.broker_id != reviewer1) as r (r.broker_id)}
+              {#each reviewersList2 as r (r.broker_id)}
                   <SelectItem value={r.broker_id} text={brokers.name(r.broker_id)} />
               {/each}  
             </Select>

@@ -6,8 +6,8 @@ import {
   Button,
   Checkbox,
 } from "carbon-components-svelte";
-import CustomComboBox from "../Utility/CustomComboBox.svelte";
-import CustomDatePicker from "../Utility/CustomDatePicker.svelte";
+import CustomComboBox from "../CustomComboBox.svelte";
+import CustomDatePicker from "../CustomDatePicker.svelte";
 
 import { createEventDispatcher } from "svelte";
 

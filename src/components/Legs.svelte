@@ -1,6 +1,6 @@
 <script>
-  import { createEventDispatcher } from 'svelte';
-  import EditableLeg from './EditableLeg.svelte';
+import { createEventDispatcher } from 'svelte';
+import EditableLeg from './EditableLeg.svelte';
 import Leg from './Leg.svelte';
 import FastTrade from './FastTrade.svelte';
 import { clickOutside } from '../common/click_outside.js';
@@ -14,7 +14,6 @@ const dispatch = createEventDispatcher();
 let ctxMenuTarget = null;
 
 export let price;
-export let open_dv = false;
 
 const isInterest = price?.eoi;
 
@@ -113,8 +112,7 @@ $: {
 
 $: if (filters.shouldFilterOrder(price, price.links?.length > 1)) dispatch("close");
 
-function refresh(e) {
-  open_dv = e.detail.open_dv;
+function refresh() {
   price = price;
 }
 </script>
@@ -123,17 +121,17 @@ function refresh(e) {
   {#if isInterest}
     <div class="header">
       {#key price}
-        <EditableLeg order={price} {open_dv} on:editableUpdated={refresh} on:updatedVol={((e) => {vol_ft = e.detail.vol})}/>
+        <EditableLeg order={price} on:editableUpdated={refresh} on:updatedVol={((e) => {vol_ft = e.detail.vol})}/>
       {/key}
       {#if price.trader_id!= 0}
         <FastTrade {year_ft} {bid_ft} {firm_ft} {price_ft} {vol_ft} {order_ft} product_id={price.product_id} {isInterest} {ctxMenuTarget}
-          canDelete={true} on:close on:closeLegs={() => dispatch('close')}/>
+          canDelete={true} on:close={() => dispatch('close')} on:closeLegs={() => dispatch('close')}/>
       {/if}
     </div> 
   {:else if price.links.length === 1}
     <div class="header">
       {#key price}
-        <EditableLeg order={price.links[0]} {open_dv} on:editableUpdated={refresh} on:updatedVol={((e) => {vol_ft = e.detail.vol})}/>
+        <EditableLeg order={price.links[0]} on:editableUpdated={refresh} on:updatedVol={((e) => {vol_ft = e.detail.vol})}/>
       {/key}
 
       <!-- For the case of Bank_id not equal to 0 (POC) -->
@@ -141,19 +139,19 @@ function refresh(e) {
       <!-- Convert the side of order: if bid= true, return false -->
       {#if price.links[0].trader_id!= 0}
           <FastTrade {year_ft} {bid_ft} {firm_ft} {price_ft} {vol_ft} {order_ft} product_id={price.product_id}
-                      canDelete={true} {ctxMenuTarget} on:close/>
+                      canDelete={true} on:close={() => dispatch('close')} {ctxMenuTarget}/>
       {/if}
     </div>
   {:else if price.links.length > 1}
     <div class="header" >
 
-      <Leg order={price} {ctxMenuTarget} on:close/>
+      <Leg order={price} {ctxMenuTarget} on:close={() => dispatch('close')}/>
 
     </div>
     <div>
       {#key price}
         {#each price.links as order (order.order_id)}
-          <EditableLeg {order} {open_dv} on:editableUpdated={refresh} on:updatedVol={((e) => {vol_ft = e.detail.vol})}/>
+          <EditableLeg {order} on:editableUpdated={refresh} on:updatedVol={((e) => {vol_ft = e.detail.vol})}/>
         {/each}
       {/key}
     </div>

@@ -56,8 +56,7 @@ $: if (openCalculator) {
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
 
-<div id="calculator" style="position: fixed; right: 15px;  bottom: 15px; display: flex; flex-direction: column; gap:3px;"> 
-  <div style="display: flex; flex-direction: row-reverse;">
+<div style="display: flex; flex-direction: row-reverse;">
     <button class="calculator-btn_icon circle" id="close_btn_indicator" style="
       text-align: center; box-shadow: rgba(0, 0, 0, 0.8) 2px 2px 10px 4px; 
       cursor: pointer;" on:click={() => {openCalculator=!openCalculator; }}
@@ -123,8 +122,6 @@ $: if (openCalculator) {
     </div>
     <!-- End of Cal-content -->
   </div>
-</div>
-
 
 <style>
 

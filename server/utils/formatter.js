@@ -21,45 +21,21 @@ async function isFWDProd (pid) {
  *  }
  * @returns {String} tenor as displayed string
  */
-module.exports.genericToTenor = async function genericToTenor(price_origin, specific_sps = false) {
-  let price = Object.assign(!!price_origin.year && !price_origin.years ?  {years:[price_origin.year]} : {}, price_origin);
+module.exports.genericToTenor = async function genericToTenor(price) {
   let tenor;
   if (await isFWDProd(price.product_id)) {
     let fwdtenor = toTenor([price.fwd]);
     let term = toTenor(price.years);
     tenor = fwdtenor + "" + term;
-  } else if (price.product_id == 18 && specific_sps) {
-    let fwdtenor;
-    let now = new Date();
-    let today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (price.fwd != null){
-      fwdtenor = price.fwd*12;
-      let todayMonth = today.getMonth();
-      let spot = addDays(today, 1);
-      let tommorrowMonth = spot.getMonth();
-      if (todayMonth != tommorrowMonth) spot = addMonths(spot, fwdtenor-1);
-      else spot = addMonths(spot, fwdtenor);
-      tenor = timestampToISODate(spot);
-    } else {
-      let date = new Date(price.start_date);
-      fwdtenor = date.getMonth() - today.getMonth() + (date.getFullYear() - today.getFullYear())*12;
-      tenor = timestampToISODate(date);
-    }
   } else if (price.product_id == 18) {
-    let fwd;
-    if (typeof price.fwd === "number") {
-      fwd = price.fwd*12;
-    } else {
-      const today = new Date();
-      const start = new Date(price.start_date);
-      const diff = (start - today) / (1000 * 60 * 60 * 24 * 30);
-      fwd = Math.round(diff);
-    }
-    tenor = fwd + 'x' + (fwd + price.years[0]*12);
+    let now = new Date();
+    let start = new Date(price.start_date);
+    let first = (start.getFullYear() - now.getFullYear())*12 + (start.getMonth() - now.getMonth());
+    tenor = first + "x" + (first + price.years[0]*12);
   } else if ([17, 27].includes(price.product_id)) {
     tenor = toEFPSPSTenor(price.start_date);
   } else if (price.product_id == 20) {
-    tenor = toRBATenor(price.years);
+    tenor = await toRBATenor(price.years);
   } else {
     tenor = toTenor(price.years);
   }
@@ -74,7 +50,6 @@ const inRangeXtoY =(n) =>{
   return false;
 }
 
-module.exports.toTenor = toTenor;
 function toTenor (years) {
   let m, r, has_months, has_weeks, has_days;
   has_months = false;
@@ -128,9 +103,9 @@ function toTenor (years) {
   });
 
   if (years.length === 2) {
-    r = 'x';
+    r = ' x ';
   } else {
-    r = (has_months) ? ' ' : ((has_weeks) ? ' ': 'x');
+    r = (has_months) ? ' ' : ((has_weeks) ? ' ': ' x ');
   }
 
   return m.join(r);
@@ -166,7 +141,7 @@ async function toRBATenor (years, start_date) {
       if (year == 1000) tenor = dateToTenor(start_date);
       else tenor += (" x " + dateToTenor(addMonths(start_date, year - 1000)));
     } else {
-      let run = runs[year - 1000];
+      let run = runs[year - 1001];
       let arr = run?.[0].split(" ");
       let str = arr?.[1] + arr?.[2];
       if (tenor == "") tenor = str;
@@ -181,7 +156,6 @@ function toDateString(date) {
     return datestrings[2] + " " + datestrings[1] + " " + datestrings[3].slice(2);
 }
 
-module.exports.getRbaRuns = getRbaRuns;
 async function getRbaRuns(){
   let rba2024 = (await query("SELECT * FROM rba_dates")).rows
     .map( d => !isNaN(new Date(d.start_date)) ? new Date(d.start_date):"TBA")
@@ -274,7 +248,6 @@ function pushHolidays(arr, d) {
 
 // Adds days to a date and returns the date
 // If the date ends up on a weekend, rolls the date forward to the next monday
-module.exports.addDays = addDays;
 function addDays(date, days, product=null) {
 
   if(!date) {
@@ -291,7 +264,6 @@ function addDays(date, days, product=null) {
 // If the date ends up on a weekend, rolls the date forward to the next monday unless
 // the rolled forward date would end up in the next month, in which case the date
 // is rolled back to the closest business day
-module.exports.addMonths = addMonths;
 function addMonths(date, months,product=null) {
   if(!date) {
     return null;
@@ -309,7 +281,6 @@ function addMonths(date, months,product=null) {
 
 // Adds years to a date and returns the date
 // If the date ends up on a weekend, rolls the date forward to the next monday
-module.exports.addYears = addYears;
 function addYears(date, years,product=null) {
   if(!date) {
     return null;
@@ -418,63 +389,4 @@ function toEFPSPSTenor (start_date) {
   let date = new Date(start_date);
   if (!monthSymbols[date.getMonth()] || !months[date.getMonth()]) return null;
   return "IR" + monthSymbols[date.getMonth()] + date.getFullYear().toString()[3] + " " + months[date.getMonth()];
-}
-
-/**
- * Adds a tenor to a date.
- * If the new date falls on a weekend, or a NSW public holiday, rolls the date
- * forward until it is a business day
- * @param {string} tenor
- * @param {Date} date
- * @returns {date}
- */
-module.exports.addTenorToDate = function (tenor, date) {
-  if(!tenor || !date) {
-    return;
-  }
-
-  if(!isTenor(tenor)) {
-    return;
-  }
-
-  let [prefix, suffix] = breakTenor(tenor);
-
-  let result;
-  switch(suffix) {
-    case 'y':
-      result = addYears(new Date(date), parseInt(prefix));
-      break;
-    case 'm':
-      result = addMonths(new Date(date), parseInt(prefix));
-      break;
-    case 'w':
-      result = addDays(new Date(date), parseInt(prefix) * 7);
-      break;
-    case 'd':
-      result = addDays(new Date(date), parseInt(prefix));
-      break;
-  }
-
-  return result;
-}
-
-// Returns true if passed in tenor is a day, week, month or year tenor (1d, 1w, 1m, 1y)
-function isTenor(tenor) {
-  return /^((?:\d)+(d|w|m|y)?)|ON$/gi.test(tenor);
-}
-
-/**
- * Splits a single tenor into its number, and its suffixed duration character
- * @param {string} tenor
- * @returns {[string, string]}
- */
-function breakTenor(tenor) {
-  if(typeof tenor !== 'string') {
-    return [undefined, undefined];
-  }
-
-  let regex = /d|w|m|y/gi;
-  let suffix = tenor.match(regex)?.[0];
-  let prefix = tenor.split(suffix)[0];
-  return [prefix, suffix ?? 'y'];
 }

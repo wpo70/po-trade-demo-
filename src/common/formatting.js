@@ -55,7 +55,7 @@ export function toBPPrice (n) {
 
 /**
  * Function to generate tenor string from given parameters, dynamically handling the product type consideration
- * @param {object} price_origin object fields to be included where applicable for given product {
+ * @param {object} price object fields to be included where applicable for given product {
  *    product_id: integer <required>,
  *    years: integer[],
  *    fwd: integer,
@@ -63,14 +63,13 @@ export function toBPPrice (n) {
  *  }
  * @returns {String} tenor as displayed string
  */
-export function genericToTenor(price_origin, specific_sps = false) {
-  let price = Object.assign(!!price_origin.year && !price_origin.years ?  {years:[price_origin.year]} : {}, price_origin);
+export function genericToTenor(price) {
   let tenor;
   if (products.isFwd(price.product_id)) {
     let fwdtenor = toTenor([price.fwd]);
     let term = toTenor(price.years);
     tenor = fwdtenor + "" + term;
-  } else if (price.product_id == 18 && specific_sps) {
+  } else if (price.product_id == 18) {
     let fwdtenor;
     let now = new Date();
     let today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -81,23 +80,14 @@ export function genericToTenor(price_origin, specific_sps = false) {
       let tommorrowMonth = spot.getMonth();
       if (todayMonth != tommorrowMonth) spot = addMonths(spot, fwdtenor-1);
       else spot = addMonths(spot, fwdtenor);
+      // tenor = spot.getDate() + "-" + (spot.getMonth() + 1) + "-" + (spot.getFullYear() - 2000);
       tenor = timestampToISODate(spot);
     } else {
       let date = new Date(price.start_date);
       fwdtenor = date.getMonth() - today.getMonth() + (date.getFullYear() - today.getFullYear())*12;
+      // tenor = date.getDate() + "-" + (date.getMonth() + 1) + "-" + (date.getFullYear() - 2000);\
       tenor = timestampToISODate(date);
     }
-  } else if (price.product_id == 18) {
-    let fwd;
-    if (typeof price.fwd === "number") {
-      fwd = price.fwd*12;
-    } else {
-      const today = new Date();
-      const start = new Date(price.start_date);
-      const diff = (start - today) / (1000 * 60 * 60 * 24 * 30);
-      fwd = Math.round(diff);
-    }
-    tenor = fwd + 'x' + (fwd + price.years[0]*12);
   } else if ([17, 27].includes(price.product_id)) {
     tenor = toEFPSPSTenor(price.start_date);
   } else if (price.product_id == 20) {
@@ -168,7 +158,7 @@ export function toTenor (years) {
   });
 
   if (years.length === 2) {
-    r = 'x';
+    r = ' x ';
   } else {
     r = (has_months) ? ' ' : ((has_weeks) ? ' ': 'x');
   }
@@ -233,7 +223,14 @@ export function tenorToYear (tenor) {
   split_tenor.forEach((t) => {
 
     t = t.trim();
-    if (t.match(/[a-zA-Z]{3}[0-9]{2}/g)) t = (rbaToYear(t)).toString();
+    if (t.match(/[a-zA-Z]{3}[0-9]{2}/g)) {
+      let rbaYear = rbaToYear(t);
+      if (rbaYear === null) {
+        console.error(`RBA tenor "${t}" not found in RBA runs. Available formats: dec25, feb26, mar26, etc.`);
+        return null;
+      }
+      t = rbaYear.toString();
+    }
     
     if(!isTenor(t)) {
       if (t) console.error(`Passed in tenor is not a tenor, tenor: ${JSON.stringify(t)}`);
@@ -306,23 +303,6 @@ export function roundToNearest(n, v) {
   return Math.round(n * v) / v;
 }
 
-export function roundUp(n, d) {
-  // Round n to d decimal places
-  // This returns a number, not a string
-
-  n = round(n, 8); //prevent rounding up floating point errors
-  let r = +(Math.ceil(n + `e+${d}`) + `e-${d}`);
-  return r;
-}
-
-export function roundUpToNearest(n, v) {
-  // round n to the nearest v value
-  // 1 no dp, 2 for 0.5, 100 for 2 dp, 1000 for 3dp ...
-
-  n = round(n, 8); //prevent rounding up floating point errors
-  return Math.ceil(n * v) / v;
-}
-
 export function getFloatingPoint(value){
   let regex = /([.,]{1}\d*?)0*$/;
   // return value.match(regex);
@@ -350,23 +330,6 @@ export function yearsToSortCode (years, fwd) {
   }
 
   return sortCode;
-}
-
-/**
- * Creates and returns at date objct with zeroed time (ie. 12am) using a given date, or the current date if none is provided
- * @param {Date || date string} d date object to be used as reference
- * @returns {Date} the zeroed date
- */
-export function getTimelessDate (d = new Date()) {
-  const isDateObject = (date) => Object.prototype.toString.call(date) === '[object Date]';
-  if (!isDateObject(d) && typeof d === "string") {
-    d = new Date(d);
-  }
-  if (!isDateObject(d)) {
-    console.error("Could not generate timeless date from given value.");
-    return null;
-  }
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
 export function timestampToDate (s) {
@@ -625,7 +588,10 @@ export function addYears(date, years,product=null) {
 
 // Returns true if passed in tenor is a day, week, month or year tenor (1d, 1w, 1m, 1y)
 export function isTenor(tenor) {
-  return /^((?:\d)+(d|w|m|y)?)|ON$/gi.test(tenor);
+  // Standard tenors: 1y, 3m, 2w, 5d, ON
+  // RBA meeting tenors: dec25, feb26, mar26, etc.
+  // Year numbers: 1001, 1002, etc. (internal RBA representation)
+  return /^((?:\d)+(d|w|m|y)?)|ON|([a-zA-Z]{3}[0-9]{2})$/gi.test(tenor);
 }
 
 // returns if a date is on the weekend or not
@@ -916,6 +882,7 @@ function getTicketBreakdown (tick, subject, bid, onlyTicket = false, mapped) {
 export async function generateConfo (tickets, mapped) {
   let pid = tickets[0].product_id;
   let prodName = products.name(tickets[0].product_id);
+  if (tickets[0].product_id == 17) prodName = "SPS EFP"; // Remove this line when pid 17 gets changed from 'EFP SPS' to 'SPS EFP'
   
   let relativeTrades = getRelativeTrades(tickets, mapped);
   let trade_ov_ids = [];
@@ -958,32 +925,10 @@ export async function generateConfo (tickets, mapped) {
     // assemble confo
     bankTrade.confo += `${tenor} ${prodName} @ ${totalRate}\n`;
     bankTrade.confo += `${summaryLine ?? ""}\n`;
-    bankTrade.confo += `${breakdown}\n`;
-    bankTrade.confo += `MW: ${new Array(bankTrade.tickets.length).fill("NA").join(", ")}`;
-    bankTrade.confo += `$-- ${bankTrade.tickets.map((t) => {return trade_ov_ids.indexOf(t.trade_id_ov)+1;}).join(", ")}`;
+    bankTrade.confo += `${breakdown}`;
     bankTrade.confo = bankTrade.confo.trim();
 
     relativeTrades[id] = bankTrade.confo;
   }
   return [relativeTrades, trade_ov_ids];
-}
-
-/**
- * Function to convert number to its ordinal string equivalent. Eg, given 31, returns "31st"
- * @param {Integer} num 
- * @return {String}
- */
-export function toOrdinalNumeral(num) {
-  if (num % 1 !== 0) { console.error("Given number is not an integer."); return undefined; }
-  if (num >= 10 && num <= 20) { return num + "th"; }
-  switch (num % 10) {
-    case 1:
-      return num + "st";
-    case 2:
-      return num + "nd";
-    case 3:
-      return num + "rd";
-    default:
-      return num + "th";
-  }
 }

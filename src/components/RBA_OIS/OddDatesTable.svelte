@@ -1,6 +1,6 @@
 <script>
     import { addDays } from '../../common/formatting';
-    import CustomDatePicker from '../Utility/CustomDatePicker.svelte';
+    import CustomDatePicker from '../CustomDatePicker.svelte';
     import { isBusinessDay } from '../../common/formatting';
     import calc_inputs from '../../stores/calc_inputs';
     import websocket from '../../common/websocket';

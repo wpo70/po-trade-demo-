@@ -1,5 +1,4 @@
 <script>
-import { onMount, tick } from 'svelte';
 import {
   DataTable,
   Toolbar,
@@ -13,8 +12,9 @@ import {
   Pagination
 } from 'carbon-components-svelte';
 import TrashCan from 'carbon-icons-svelte/lib/TrashCan.svelte';
-import DocumentExport from "carbon-icons-svelte/lib/DocumentExport.svelte";
-import CertificateCheck from 'carbon-icons-svelte/lib/CertificateCheck.svelte';
+import Launch from "carbon-icons-svelte/lib/Launch.svelte";
+import OpenPanelTop from "carbon-icons-svelte/lib/OpenPanelTop.svelte";
+import SubtractLarge from "carbon-icons-svelte/lib/SubtractLarge.svelte";
 
 import {
   toPrice,
@@ -35,17 +35,18 @@ import brokers from '../stores/brokers.js';
 import active_product from '../stores/active_product.js';
 import products from '../stores/products.js';
 
+import DocumentExport from "carbon-icons-svelte/lib/DocumentExport.svelte";
+import CertificateCheck from 'carbon-icons-svelte/lib/CertificateCheck.svelte';
+
 export let active_orders;
 export let selection = [];
+export let showCompleteOrderTable;
 
 let rowIds = [];
 let active = false;
 let delete_dialog = false;
 $: permission = user.getPermission($brokers);
 
-// Pagination controller
-let pageSize = 25;
-let page = 1;
 
 /**
  * RowIds is an array of order Id - list of array of number - has been selected
@@ -56,7 +57,6 @@ $: resetRowIds(selection);
 $: selection = (rowIds ? active_orders.filter((r) => rowIds.includes(r.order_id)) : []);
 $: active = rowIds.length > 0;
 $: ordersSelected = selection.filter(selected => !selected?.eoi);
-$: totalItems = active_orders.length;
 
 function resetRowIds () {
   if (selection.length == 0) {
@@ -152,62 +152,20 @@ function makeSelectionFirm () {
   rowIds = [];
 }
 
-function accentCell(node, cell) {
-  function style_parent(str) {
-    node.parentElement.style = str;
-    node.parentElement.classList.add("highlighted_cell");
-  }
+// Pagination controller
+let pageSize = 3;
+let page = 1;
 
-  switch (cell.key) {
-    case "bid":
-      node.parentElement.classList.add("highlighted_cell");
-      node.parentElement.setAttribute("bid", cell.value);
-      return;
-    case "tenor":
-    case "bank":
-      return style_parent("background-color: var(--cds-button-separator);");
-    case "price":
-      return style_parent("background-color: var(--cds-decorative-01);");
-    case "volume":
-      return style_parent("background-color: var(--cds-tag-background-blue);");
-    default:
-      return;
-  }
-}
-
-$: checkAccents(active_orders);
-async function checkAccents() {
-  await tick();
-  let cells = Array.from(document.querySelectorAll("td.highlighted_cell[bid]"));
-  cells.forEach(cell => {
-    cell.setAttribute("bid", cell.innerText);
-  });
-}
-
-const observer = new ResizeObserver(setPageSize);
-function setPageSize() {
-  let table = document.getElementsByClassName("orders-table")?.[0]?.firstElementChild;
-  if (!table) { return; }
-  if (table.scrollHeight > table.clientHeight || pageSize < totalItems) {
-    const t_height = table.getBoundingClientRect().height - 72;
-    const r_height = table.querySelector("tr[data-row]").getBoundingClientRect().height;
-    const r_count = Math.floor(t_height/r_height);
-    pageSize = r_count;
-  }
-}
-
-onMount(() => {
-  observer.observe(document.getElementsByClassName("orders-table")[0]);
-  // setPageSize();
-});
+$: showCompleteOrderTable ? pageSize = 15 : pageSize = 3;
 
 </script>
 
-<div class="orders-table">
+<div class="orders-table" >
 <DataTable
-  bind:page
+  {page}
   {pageSize}
   useStaticWidth={false}
+  class='ordersTable'
   selectable
   sortable
   batchSelection ={active}
@@ -225,6 +183,7 @@ onMount(() => {
     {key: 'trader', value: 'Trader'},
     {key: 'bank', value: 'Bank'},
     {key: 'broker', value: 'Broker'},
+    {key: 'currency_code', value: 'Currency'},
     ... $active_product == 18 ? [
       {key: 'start_date', value: 'Start Date'},
       {key: 'stir_product', value: 'Product'}
@@ -265,7 +224,7 @@ onMount(() => {
         stir_product: getSTIRProduct(order.product_id, order.years)
       };
       if(!order.eoi) {
-        order_display.bid = bidToString(order.bid).concat(order_is_old ? ' ❄️' : order.firm ? '' : ' ⛔');
+        order_display.bid = bidToString(order.bid).concat(order_is_old ? '❄️' : order.firm ? '' : ' ⛔');
         order_display.price = ([1, 3, 20].includes(products.nonFwd(order.product_id))) && order.years.length != 1 ? toBPPrice(order.price) : toPrice(order.price);
         order_display.volume = toVolumeString(order.volume).concat(order.isBelowMMP() ? ' ⚠️' : '');
       }
@@ -273,8 +232,28 @@ onMount(() => {
     })
   }
 >
-  <svelte:fragment slot="cell" let:rowIndex let:cell>
-    <div use:accentCell={cell}>{cell.value}</div>
+  <svelte:fragment slot="cell" let:row let:cell>
+    {#if cell.key === "bid" && cell.value === 'Offer' }
+      <div class="highlight-cell-order-table" style="background-color: #86150b;
+        ">{cell.value}</div>
+    {:else if cell.key === "bid" && cell.value === 'Bid'}
+      <div class="highlight-cell-order-table" style="background-color: #215abe; margin-left: -21px; margin-right: -15px;
+        ">{cell.value}</div>
+    {:else if cell.key === "tenor"}
+      <div class="highlight-cell-order-table" style="background-color: black;
+        ">{cell.value}</div>
+    {:else if cell.key === "price"}
+      <div class="highlight-cell-order-table" style="background-color: rgb(90 90 90);
+        ">{cell.value}</div>
+    {:else if cell.key === "volume"}
+      <div class="highlight-cell-order-table" style="background-color: rgb(0,0,255);
+        ">{cell.value}</div>
+    {:else if cell.key === "bank"}
+    <div class="highlight-cell-order-table" style="background-color:black;
+        ">{cell.value}</div>
+    {:else}
+      {cell.value}
+    {/if}
   </svelte:fragment>
 
   <Toolbar size="sm">
@@ -310,11 +289,11 @@ onMount(() => {
 
 <!------- Pagination ----------------->
 <Pagination
-  {pageSize}
+  bind:pageSize
   bind:page
-  {totalItems}
+  totalItems={active_orders.length}
   pageSizeInputDisabled
-  />
+/>
 </div>
 
 <!--
@@ -337,36 +316,45 @@ onMount(() => {
 
 <style>
   .orders-table {
+    overflow-y: hidden;
+    /* height: calc(100vh - 43px - 56px - 6rem); */
     width: 100%;
-    background-color: var(--cds-ui-01);
-  }
-  :global(.orders-table .bx--data-table-container) {
-    padding-top: 0px;
-    height: calc(100% - 45px);
-  }
-  :global(.orders-table td.highlighted_cell) {
-    font-weight: bold;
-    &[bid^=Offer] {
-      background-color: var(--cds-tag-background-red) !important;
-    }
-    &[bid^=Bid] {
-      background-color: var(--cds-tag-background-cyan) !important;
-    }
-    &[bid*=Rec] {
-      background-color: var(--cds-tag-color-red) !important;
-      color: var(--cds-text-inverse);
-    }
-    &[bid*=Pay] {
-      background-color: var(--cds-tag-color-cyan) !important;
-      color: var(--cds-text-inverse);
-    }
-    /* 1.145.36.110, 101.169.64.2 */
-  }
-  :global(.rba_ois .orders-table) {
-    min-height: 0px;
+    background-color: #262626;
+    /* min-height: 788px; matches stir order form height (tallest element) */
   }
   .orders-table::-webkit-scrollbar {
     width: 10px;
     height: 10px;
+  }
+  :global(.rba_ois .orders-table) {
+    min-height: 0px;
+  }
+  :global(.ordersTable .bx--data-table tbody tr td) {
+    text-align: left;
+    white-space: nowrap;
+    /* margin: 0 auto; */
+  }
+  :global(.orders-table .bx--data-table--sticky-header){
+    max-height: calc(100vh - 43px - 56px - 10rem);
+    overflow-y: hidden;
+  }
+  :global(.orders-table .bx--data-table--sticky-header){
+    overflow-y: auto;
+  }
+  :global(.orders-table .bx--data-table--tall thead){
+    height: 3rem;
+    text-align: left;
+  }
+  :global(.orders-table .bx--data-table--tall tr) {
+    height: 55px !important;
+    min-height: 0rem !important;
+  }
+  .highlight-cell-order-table {
+    font-weight: bold;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    margin: -8px -20px;
   }
 </style>

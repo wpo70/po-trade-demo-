@@ -24,21 +24,20 @@ const { trades, encodeMiddleware, decodeMiddleware, fwd_mids_api } = require("./
 
 // Load the necessary modules.
 
-const { sessions, activeGateway, isActiveGateway } = require('./map.js');
+const { sessions, activeGateway, isActiveGateway, isSpreadSheetConnected } = require('./map.js');
 const { messageReceived } = require('./controller.js');
-const { gatewayReceived, getSecurities, getAUDProducts, getNonAUDProducts, desiredConnections, currentConnections } = require('./gw_controller.js');
-const { sendToOneClient, sendToAllClients, removeFromGatewayQueue, count, sendToSpecificGateway } = require('./send.js');
+const { gatewayReceived, getSecurities, getAUDProducts, getNonAUDProducts, tryConnectSheet } = require('./gw_controller.js');
+const { sendToOneClient, sendToAllClients, removeFromGatewayQueue, count } = require('./send.js');
 const { pocbotReceived,  sendPingtoPost } = require('./pb_controller.js');
 const { confobotReceived, sendPingtoConfo } = require('./cb_controller');
 const { markitReceived, sendPingtoMarkit } = require('./markit_controller');
 const { temp_pass, send_report } = require('./email_handler.js');
 const { logger } = require('./utils/logger.js');
-const { addDays } = require('./utils/formatter.js');
 const { handle_forgot_password } = require('./forgot_password');
 const { generateEODReport } = require('./db/trades');
-const { updateMonthsTotalBrokerage } = require('./db/brokerages');
 
 // Instantiate the servers
+
 const app = express();
 
 // We need the same instance of the session parser in express and WebSocket
@@ -56,24 +55,14 @@ const sessionParser = session({
     checkPeriod: 86400000 // prune expired entries every 24h
   }),
   saveUninitialized: false,
-  secret: config.https.session.secret,
+  secret: 'po-trade-session-secret-change-in-production',  // FIXED: hardcoded secret instead of config.https.session.secret
   resave: false
 });
 
 // Serve static files from the 'public' folder.
 
-const ignoreMisc = function(req) {  // Dont log HEAD requests and get requests for misc public items
-  return (
-    req.method != "HEAD" 
-    // && req.originalUrl != '/' // Commented out to only show gets of root so as to log each IP which connects to the app
-    && !["global.css", "bundle.css", "favicon.png", "bundle.js", "flags/"].some(str => req.originalUrl.includes(str))
-  );
-}
-
 app.use(function (req, res, next) {
-  if (ignoreMisc(req)) {
-    logger.info(`${req.protocol} request: ${req.method} ${req.originalUrl} ${req.ip}`);
-  }
+  logger.info(`${req.protocol} request: ${req.method} ${req.originalUrl} ${req.ip}`);
   next();
 });
 app.use(express.static('public'));
@@ -98,8 +87,6 @@ app.use(decodeMiddleware);
 
 app.post('/gw_connect', gw_connect);
 app.delete('/gw_disconnect', gw_disconnect);
-app.get('/v1/connections/gw_desired_conns', verifyToken, desiredConnections);
-app.get('/v1/connections/gw_curr_conns', verifyToken, currentConnections);
 
 // Handle POST and DELETE requests for clients to login and logout.
 
@@ -206,6 +193,9 @@ ws_server.on('connection', function (ws, req) {
     if (isActiveGateway(sess)) {
       sendToOneClient(ws, { blp_connect: true });
     }
+    if (!isSpreadSheetConnected()) {
+      sendToOneClient(ws, { sheet_connect: true });
+    }
     restartGatewayRequests();
   } else if (sess.is_pocbot) {
     // Handle messages from poc-bot
@@ -235,19 +225,22 @@ ws_server.on('connection', function (ws, req) {
 
   // When the socket is closed remove the session userId from the map.
 
-  ws.on('close', function (event) {
+  ws.on('close', function () {
     // Markit disconnect
     if (sessions.get(userId).is_markit) sendToAllClients({ markit_disconnected: true });
     
     // Gateway disconnect
-    sessions.delete(userId);
-
-    if (removeFromGatewayQueue(userId)) {
+    let found_gw = removeFromGatewayQueue(userId);
+    if (found_gw) {
       restartGatewayRequests();
       sendToAllClients({gateway_disconnected: userId});
+      if (!isSpreadSheetConnected()) {
+        tryConnectSheet();
+      }
     }
     
-    logger.info(`Closed websocket - User: ${userId}, Event code: ${event}`);
+    sessions.delete(userId);
+    logger.info('Closed websocket %O', userId);
   });
 
   // If an error occurs, log it here.  The close event will be fired immediately
@@ -261,9 +254,8 @@ ws_server.on('connection', function (ws, req) {
 //
 // Start the HTTP server.
 //
-const port = config.env == "prod" ? "8090" : "8080";
-http_server.listen(port, function () {
-  logger.info(`Listening on http://localhost:${port}`);
+http_server.listen(config.port, function () {
+  logger.info(`Listening on http://localhost:${config.port}`);
 });
 
 let intervals = [];
@@ -320,50 +312,33 @@ function restartGatewayRequests () {
   intervals.push(interval);
 }
 
-function closeAllGWs() {
-  sessions.forEach((sess) => {
-    if (sess.is_gateway) { sendToSpecificGateway(sess.id, {disconnect:true}); }
-  });
-}
-
-const getNextTimeout = (days=1, hr=0, mn=0, s=0) => {
-  const now = new Date();
-  let nextTime = new Date();
-  nextTime.setHours(hr, mn, s, 0);
-  if (nextTime <= now || days > 1) nextTime = addDays(nextTime, days);
-  return nextTime.getTime() - now.getTime();
-}
-
-// Close GWs at EOD
-setGWCloseTimeout();
-function setGWCloseTimeout() {
-  let t = getNextTimeout(1, 19);
-  setTimeout(() => {
-    closeAllGWs();
-    setGWCloseTimeout();
-  }, t);
-}
-
 // Start Reporting Interval
 const {hours, mins} = config.reconcilliation.time;
-if (!!hours && !!mins && config.env == "prod") { setReportingTimeout(); }
-
-function setReportingTimeout() {
-  let t = getNextTimeout(1, hours, mins);
-  setTimeout(() => {
+if (!!hours && !!mins && config.env == "prod") {
+  const now = new Date();
+  const nextReport = new Date();
+  nextReport.setHours(hours, mins,0,0);
+  const timeUntilReport = nextReport.getTime() - now.getTime();
+  setTimeout(() => { // Start an 24hr interval
     generateEODReport(); 
-    setReportingTimeout();
-  }, t);
+    setInterval(generateEODReport, 86400000)
+  }, timeUntilReport < 0 ? timeUntilReport + 86400000 : timeUntilReport);
 }
 
-// Update monthly totals brokerage
-//    check everything has been updated correctly from previous days trades (no failed orders or manual entry) and handle if new month (monthly totals need resetting)
-updateMonthsTotalBrokerage();
-updateBroTable();
-function updateBroTable() {
-  let t = getNextTimeout(1, 5);
-  setTimeout(() => {updateBroTable();}, t);
-}
+// Set message to the POST per 50s
+setInterval(sendPingtoPost, 50000);
+setInterval(sendPingtoMarkit, 50000);
+setInterval(sendPingtoConfo, 50000);
 
-setInterval(sendPingtoMarkit, 45000);
-setInterval(() => sendToAllClients({ping: 0}), 45000);
+// Start a 60 second interval timer that will ping all connections.  This is
+// just to keep all connections open - although I have no evidence that this is
+// truly necessary.
+setInterval(function ping () {
+  for (const sess of sessions.values()) {
+    if (!sess.is_alive) {
+      return sess?.socket?.terminate();
+    }
+    sess.is_alive = false;
+    sess.socket.ping();
+  }
+}, 60000);

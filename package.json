@@ -1,6 +1,6 @@
 {
   "name": "po-trade",
-  "version": "1.1.X",
+  "version": "1.0.X",
   "description": "PO Trade",
   "license": "UNLICENSED",
   "repository": "https://github.com/POCapital/potrade.git",
@@ -15,7 +15,7 @@
     "test": "npx cypress open",
     "lint": "eslint --fix ."
   },
-  "author": "Malcolm Goris, Adam Goris, Aidan Grigg, Tristan Bongolan, Michelle Nguyen, Michael Dowsett, Nathan Ibarcena, Mattias Przyrembel, James Dollman, Ray Kinjo",
+  "author": "Malcolm Goris, Adam Goris, Aidan Grigg, Tristan Bongolan, Michelle Nguyen, Michael Dowsett, Nathan Ibarcena, Mattias Przyrembel",
   "devDependencies": {
     "@babel/core": "^7.22.20",
     "@babel/eslint-parser": "^7.22.15",

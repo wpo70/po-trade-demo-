@@ -28,95 +28,187 @@ bank_id   bank
 import quotes from '../stores/quotes.js';
 import brokerages from '../stores/brokerages.js';
 import traders from '../stores/traders.js';
+import banks from '../stores/banks.js';
 import { getRbaRuns } from './rba_handler.js';
+
+// Default brokerage fees per bank (low_fee for <=2yr, high_fee for >2yr)
+// These are the standard rates from the brokerage agreements
+const BANK_FEES = {
+  'NAB':       { low_fee: 0.02, high_fee: 0.03 },
+  'CBA':       { low_fee: 0.02, high_fee: 0.03 },
+  'WBC':       { low_fee: 0.02, high_fee: 0.03 },
+  'ANZ':       { low_fee: 0.02, high_fee: 0.03 },
+  'JPM':       { low_fee: 0.03, high_fee: 0.035 },
+  'JP Morgan': { low_fee: 0.03, high_fee: 0.035 },
+  'NOM':       { low_fee: 0.02, high_fee: 0.03 },
+  'Nomura':    { low_fee: 0.02, high_fee: 0.03 },
+  'BNP':       { low_fee: 0.02, high_fee: 0.03 },
+  'MUF':       { low_fee: 0.02, high_fee: 0.03 },
+  'ING':       { low_fee: 0.02, high_fee: 0.03 },
+  'CIBC':      { low_fee: 0.02, high_fee: 0.03 },
+  'UBS':       { low_fee: 0.02, high_fee: 0.03 },
+  'MST':       { low_fee: 0.02, high_fee: 0.03 },
+  'Morgan Stanley': { low_fee: 0.02, high_fee: 0.03 },
+  'SGEN':      { low_fee: 0.02, high_fee: 0.03 },
+  'Societe Generale': { low_fee: 0.02, high_fee: 0.03 },
+  'BOA':       { low_fee: 0.02, high_fee: 0.03 },
+  'TD':        { low_fee: 0.02, high_fee: 0.03 },
+  'GS':        { low_fee: 0.02, high_fee: 0.03 },
+  'BJA':       { low_fee: 0.02, high_fee: 0.03 },
+  'MIZ':       { low_fee: 0.02, high_fee: 0.03 },
+  'Mizuho':    { low_fee: 0.02, high_fee: 0.03 },
+  'CITI':      { low_fee: 0.02, high_fee: 0.03 },
+  'Citi':      { low_fee: 0.02, high_fee: 0.03 },
+  'DB':        { low_fee: 0.02, high_fee: 0.03 },
+  'RBC':       { low_fee: 0.02, high_fee: 0.03 },
+  'BAR':       { low_fee: 0.02, high_fee: 0.03 },
+  'HSBC':      { low_fee: 0.02, high_fee: 0.03 },
+  'Macquarie': { low_fee: 0.02, high_fee: 0.03 },
+  'MAC':       { low_fee: 0.02, high_fee: 0.03 },
+  'SCB':       { low_fee: 0.02, high_fee: 0.03 },
+  'Standard Chartered': { low_fee: 0.02, high_fee: 0.03 },
+  'SG':        { low_fee: 0.02, high_fee: 0.03 },
+};
+
+// Map bank names to brokerage calculation functions
+const BANK_BRO_FUNCTIONS = {
+  'NAB': getNABBro,
+  'CBA': getCBABro,
+  'WBC': getWBCBro,
+  'ANZ': getANZBro,
+  'JPM': getJPMBro,
+  'JP Morgan': getJPMBro,
+  'NOM': getNOMBro,
+  'Nomura': getNOMBro,
+  'BNP': getBNPBro,
+  'MUF': getMUFBro,
+  'ING': getINGBro,
+  'CIBC': getCIBCBro,
+  'UBS': getUBSBro,
+  'MST': getMSTBro,
+  'Morgan Stanley': getMSTBro,
+  'SGEN': getSGENBro,
+  'Societe Generale': getSGENBro,
+  'BOA': getBOABro,
+  'TD': getTDBro,
+  'GS': getDefaultBro,
+  'BJA': getBJABro,
+  'MIZ': getMIZBro,
+  'Mizuho': getMIZBro,
+  'CITI': getCITIBro,
+  'Citi': getCITIBro,
+  'DB': getDBBro,
+  'RBC': getRBCBro,
+  'BAR': getBARBro,
+  'HSBC': getDefaultBro,
+  'Macquarie': getDefaultBro,
+  'MAC': getDefaultBro,
+  'SCB': getDefaultBro,
+  'Standard Chartered': getDefaultBro,
+  'SG': getDefaultBro,
+};
+
+// Get bank fees - either from BANK_FEES or use defaults
+function getBankFees(bank_name) {
+  return BANK_FEES[bank_name] || { low_fee: 0.02, high_fee: 0.03 };
+}
+
+// Enhance bro_info with fees if not present
+function enhanceBroInfo(bro_info, bank_name) {
+  const fees = getBankFees(bank_name);
+  return {
+    ...bro_info,
+    low_fee: bro_info?.low_fee ?? fees.low_fee,
+    high_fee: bro_info?.high_fee ?? fees.high_fee,
+    monthly_brokerage_sum: bro_info?.monthly_brokerage_sum ?? 0,
+    specific_fee: bro_info?.specific_fee ?? {}
+  };
+}
 
 export function getBrokerage(order, volume) {
   let brokerage;
 
-  // Get brokerage info for bank
-
+  // Get bank info
   let bank_id = traders.get(order.trader_id).bank_id;
+  let bank = banks.get(bank_id);
+  let bank_name = bank?.bank || 'Unknown';
+  
+  // Get brokerage info for bank and enhance with fees
   let bro_info = brokerages.get(bank_id);
+  bro_info = enhanceBroInfo(bro_info, bank_name);
 
-  switch (bank_id) {
-    case 1:
-      brokerage = getNABBro(bro_info, order, volume);
-      break;
-    case 2:
-      brokerage = getJPMBro(bro_info, order, volume);
-      break;
-    case 3:
-      brokerage = getNOMBro(bro_info, order, volume);
-      break;
-    case 4:
-      brokerage = getBNPBro(bro_info, order, volume);
-      break;
-    case 5:
-      brokerage = getMUFBro(bro_info, order, volume);
-      break;
-    case 6:
-      brokerage = getINGBro(bro_info, order, volume);
-      break;
-    case 7:
-      brokerage = getCIBCBro(bro_info, order, volume);
-      break;
-    case 8:
-      brokerage = getCBABro(bro_info, order, volume);
-      break;
-    // cases 9 - 12 are test banks
-    case 13:
-      brokerage = getWBCBro(bro_info, order, volume);
-      break;
-    case 14:
-      brokerage = getUBSBro(bro_info, order, volume);
-      break;
-    case 15:
-      brokerage = getANZBro(bro_info, order, volume);
-      break;
-    case 16:
-      brokerage = getMSTBro(bro_info, order, volume);
-      break;
-    case 17:
-      brokerage = getSGENBro(bro_info, order, volume);
-      break;
-    case 18:
-      brokerage = getBOABro(bro_info, order, volume);
-      break;
-    case 19:
-      brokerage = getTDBro(bro_info, order, volume);
-      break;
-    // case 20:
-    //   brokerage = getGSBro(bro_info, order, volume);
-    //   break;
-    // case 21:
-    //   brokerage = getCSBro(bro_info, order, volume);
-    //   break;
-    case 22:
-      brokerage = getBJABro(bro_info, order, volume);
-      break;
-    case 23:
-      brokerage = getMIZBro(bro_info, order, volume);
-      break;
-    case 24:
-      brokerage = getCITIBro(bro_info, order, volume);
-      break;
-    case 25:
-      brokerage = getDBBro(bro_info, order, volume);
-      break;
-    case 26:
-      brokerage = getRBCBro(bro_info, order, volume);
-      break;
-    case 27:
-      brokerage = getBARBro(bro_info, order, volume);
-      break;
-    default:
-      //FIXME: ADD BANKS RATHER THAN USING DEFAULT
-      brokerage = 500;
-      // console.error('Attempted to get brokerage of unknown bank_id ' + bank_id);
+  // Handle EFP products (product_id 2 and 17) separately
+  // EFP doesn't have quotes in the same way, so use simplified calculation
+  if (order.product_id === 2 || order.product_id === 17) {
+    brokerage = getEFPBrokerage(order, volume, bro_info);
+    brokerage = round(brokerage, 2);
+    return brokerage;
   }
+
+  // Get the brokerage function for this bank
+  let broFunc = BANK_BRO_FUNCTIONS[bank_name] || getDefaultBro;
+  brokerage = broFunc(bro_info, order, volume);
 
   // Return brokerage to 2 decimal places
   brokerage = round(brokerage, 2);
+  return brokerage;
+}
+
+// EFP Brokerage calculation
+// Uses a simplified PV calculation with the order price as the rate
+function getEFPBrokerage(order, volume, bro_info) {
+  let year = order.years[0];
+  let rate = order.price || 4.5; // Default rate if not set
+  
+  // Fee based on tenor
+  let pid = order.product_id;
+  let fee = bro_info.specific_fee?.[pid] ?? (year <= 2 ? bro_info.low_fee : bro_info.high_fee);
+  
+  // Compound interval: quarterly (4) for <=3 years, semi (2) for >3 years
+  let comp_intv = year <= 3 ? 4 : 2;
+  
+  // Calculate PV
+  let notional = volume * 1000000;
+  let comp_rate = rate / (comp_intv * 100);
+  let nper = year * comp_intv;
+  let pmt = (fee / (comp_intv * 10000)) * notional;
+  
+  // PV formula
+  let num = pmt * (Math.pow(1 + comp_rate, nper) - 1);
+  let den = comp_rate * Math.pow(1 + comp_rate, nper);
+  
+  let brokerage = num / den;
+  
+  // Apply monthly discount if applicable
+  if (bro_info.monthly_brokerage_sum > 75000) {
+    brokerage *= 0.3;
+  } else if (bro_info.monthly_brokerage_sum > 30000) {
+    brokerage *= 0.5;
+  }
+  
+  return brokerage;
+}
+
+// Default brokerage function for banks without specific rules
+function getDefaultBro(bro_info, order, volume) {
+  let year, fee;
+  let rate = order?.price;
+  
+  if (order.isOutright()) {
+    year = order.years[0];
+  } else if (order.isSpread()) {
+    rate = null;
+    year = order.years[1];
+  } else if (order.isButterfly()) {
+    rate = null;
+    year = order.years[1];
+  }
+  
+  let pid = order.product_id;
+  fee = bro_info.specific_fee?.[pid] ?? ((order.years.some(y => y >= 1000) || order.years.at(-1) <= 2) ? bro_info.low_fee : bro_info.high_fee);
+  
+  let brokerage = getBaseBrokerage(year, volume, fee, order?.product_id, rate);
+  
   return brokerage;
 }
 

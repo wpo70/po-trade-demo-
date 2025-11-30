@@ -5,6 +5,7 @@ import Add from "carbon-icons-svelte/lib/Add.svelte";
 
 import { createEventDispatcher } from "svelte";
 
+import Toasts from "./Toasts.svelte";
 import BrokersTable from './BrokersTable.svelte';
 import BrokerForm from './BrokerForm.svelte';
 import PermissionTable from './PermissionTable.svelte';
@@ -76,6 +77,7 @@ function handleThemeChange(event) { theme = event.detail; }
     on:click={close}>
     &#60; Back
   </Button>
+  <div class="toast"><Toasts /></div>
 </div>
 
 <!-- MAIN CONTENT -->
@@ -122,5 +124,11 @@ function handleThemeChange(event) { theme = event.detail; }
   align-items: center;
   gap: 2rem;
   padding: 1rem 2rem;
+}
+
+.toast {
+  position:fixed;
+  right: 0;
+  z-index: 100;
 }
 </style>

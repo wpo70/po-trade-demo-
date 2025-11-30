@@ -19,12 +19,24 @@ export function toDateString(date) {
 }
 
 export function findRbaDates() {
+    // SAFETY CHECK: Return empty object if quotes not initialized yet
+    if (!quotes || typeof quotes.getRbaDates !== 'function') {
+        console.warn('quotes.getRbaDates not available yet, returning empty dates');
+        return {};
+    }
+    
     // New 2024 rba Dates
-    // Since RBA meetings Dates had been changed in irregular terms,
-    // Pull Data from Database and replace data from Feb 2024
-    let rba2024 = quotes.getRbaDates()
-    .map( d => !isNaN(new Date(d.start_date)) ? new Date(d.start_date):"TBA")
-    .sort((a,b) => a-b);
+    let rba2024 = quotes.getRbaDates();
+    
+    // SAFETY CHECK: If no RBA dates loaded yet, return empty
+    if (!rba2024 || !Array.isArray(rba2024) || rba2024.length === 0) {
+        console.warn('No RBA dates available yet');
+        return {};
+    }
+    
+    rba2024 = rba2024
+        .map( d => !isNaN(new Date(d.start_date)) ? new Date(d.start_date):"TBA")
+        .sort((a,b) => a-b);
 
     let rba2024_index = 0;
     
@@ -45,6 +57,10 @@ export function findRbaDates() {
 
 function initSpotRates(){
     quoteslist = get(quotes)[20];
+    if (!quoteslist) {
+        spotRates = [];
+        return;
+    }
     let rates = [];
     let today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     let spot = addDays(today, 1);
@@ -64,16 +80,13 @@ function initSpotRates(){
     }
     spotRates = rates;
 }
-/**
- * RBARuns construct of
- *  - start Date
- *  - End Date
- *  - mid rate
- *  - override value -default "null"
- *  - period duration - dayCount
- */
+
 function initRbaRuns(){
     quoteslist = get(quotes)[20];
+    if (!quoteslist) {
+        rbaRuns = [];
+        return;
+    }
     let runs = [];
     let today = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate());
     let spot = addDays(today, 1);
@@ -81,6 +94,9 @@ function initRbaRuns(){
     for (let q of quoteslist){
         if (q.year > 1000){
             let index = q.year - 1000;
+            if (!rbas[index] || !rbas[index + 1]) {
+                continue; // Skip if RBA dates not available
+            }
             let run = [];
             let d1 = rbas[index];
             d1 = new Date(d1.getFullYear(), d1.getMonth(), d1.getDate());
@@ -91,7 +107,6 @@ function initRbaRuns(){
             run[2] = get(data_collection_settings).calcOIS ? getRateForDates(d1, d2) : q.mid.toFixed(4);
             run[3] = q.override;
             run[4] = Math.round((d2.getTime() - d1.getTime()) / (1000*60*60*24));
-            run[5] = toDateString(d1).slice(3);
             runs.push(run);
         }
     }
@@ -130,10 +145,13 @@ function initSwapTenors (rbaRuns) {
     let _swapTenorHeaders = [];
     let rates = [];
     for (let i = 0; i < 12; i++) {
-        rates[i] = rbaRuns[i][2];
+        if (rbaRuns[i]) {
+            rates[i] = rbaRuns[i][2];
+        }
     }
     let spreads = [];
     for (let i = 1; i <= 12; i++) {
+        if (!rbaRuns[i-1]) continue;
         let spread = [];
         _swapTenorHeaders[i-1] = rbaRuns[i-1][0];
         spread[0] = rbaRuns[i-1][0];
@@ -183,10 +201,32 @@ export function clearAll () {
 }
 
 export function rbaToYear (tenor) {
-    if (rbaRuns.length == 0) initRbaRuns();
-    for (let i = 0; i < 12; i++) {
-        let parts = rbaRuns[i][0].split(" ");
-        if ((parts[1]+parts[2]).toLowerCase() == tenor.toLowerCase()) return (1001 + i);
+    if (rbaRuns.length == 0) {
+        initRbaRuns();
     }
+    
+    if (rbaRuns.length == 0) {
+        console.warn('rbaToYear: rbaRuns is empty, cannot convert tenor:', tenor);
+        return null;
+    }
+    
+    for (let i = 0; i < rbaRuns.length; i++) {
+        if (!rbaRuns[i] || !rbaRuns[i][0]) continue;
+        let parts = rbaRuns[i][0].split(" ");
+        if (parts.length >= 3 && (parts[1]+parts[2]).toLowerCase() == tenor.toLowerCase()) {
+            return (1001 + i);
+        }
+    }
+    
+    // Log available tenors to help debug
+    let available = rbaRuns.map((r, i) => {
+        if (r && r[0]) {
+            let p = r[0].split(" ");
+            return p.length >= 3 ? (p[1]+p[2]).toLowerCase() : null;
+        }
+        return null;
+    }).filter(t => t);
+    console.warn(`rbaToYear: tenor "${tenor}" not found. Available: ${available.join(', ')}`);
+    
     return null;
 }

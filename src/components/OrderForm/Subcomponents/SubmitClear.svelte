@@ -21,10 +21,46 @@
   $: permission = user.getPermission($brokers);
 
   function handleSubmit() {
+    // Normalize product 103 (RBA OIS page) to product 20 (OIS) immediately
+    if (fields.product == 103) fields.product = 20;
+    
+    // For RBA OIS, ensure tenor.value is set from rbaLeg indices
+    if (fields.product == 20 && fields.rba.rbaLeg1Index >= 0) {
+      let years = [1001 + fields.rba.rbaLeg1Index];
+      if (fields.rba.rbaLeg2Index >= 0 && fields.rba.secondLeg) {
+        years.push(1001 + fields.rba.rbaLeg2Index);
+      }
+      fields.tenor.value = years;
+      fields.tenor.invalid = false;
+      
+      // Parse volume from string if not set
+      if (!fields.volume.value || fields.volume.value <= 0) {
+        fields.volume.value = parseFloat(fields.volume.str) || 0;
+        fields.volume.invalid = false;
+      }
+      
+      // Parse price from string if not set
+      if (fields.offer_selector === 'two') {
+        if (!fields.offer_price.value && fields.offer_price.str) {
+          fields.offer_price.value = parseFloat(fields.offer_price.str);
+        }
+        if (!fields.bid_price.value && fields.bid_price.str) {
+          fields.bid_price.value = parseFloat(fields.bid_price.str);
+        }
+      } else {
+        if (!fields.price.value && fields.price.str) {
+          fields.price.value = parseFloat(fields.price.str);
+        }
+      }
+    }
+    
     // Make sure a valid tenor was chosen.
-    fields.tenor.setProd(fields.product);
-    fields.tenor.dirty = true;
-    fields.tenor.invalid = fields.tenor.isInvalid(Validator.scanTenor);
+    // Skip tenor validation for RBA OIS - it uses rba indices instead
+    if (fields.product != 20) {
+      fields.tenor.setProd(fields.product);
+      fields.tenor.dirty = true;
+      fields.tenor.invalid = fields.tenor.isInvalid(Validator.scanTenor);
+    }
 
     if (fields.isFWD) {
       fields.fwd.setProd(fields.product);
@@ -43,7 +79,7 @@
     }
     
     // Ignore the submit event if invalid.
-    if (fields.tenor.invalid || fields.isFWD && fields.fwd.invalid || (fields.start.invalid && fields.product != 20)) return;
+    if (fields.tenor.invalid || fields.isFWD && fields.fwd.invalid || (fields.start.invalid && fields.product != 20 && fields.product != 103)) return;
       
     if(!fields.interest) {
       if(fields.offer_selector !== 'two'){
@@ -99,15 +135,19 @@
     else fields.rba.invalidRBA1 = false;
     if (fields.rba.rbaLeg2Index == -1 && fields.rba.secondleg) fields.rba.invalidRBA2 = true;
     else fields.rba.invalidRBA2 = false;
-    fields.dv01.invalid = fields.dv01.value == 0;
+    fields.dv01.invalid = fields.dv01.str === 0;
     // If any of the data is invalid, ignore the submit event.
-    let p20 = fields.product == 20;
+    let p20 = fields.product == 20 || fields.product == 103;
     if (fields.offer_selector !== 'two') {
       if ((fields.tenor.invalid && !p20) || (fields.rba.invalidRBA1 || (fields.rba.invalidRBA2 && fields.rba.secondLeg)) && p20 || fields.price.invalid
-        || (!fields.interest && fields.volume.invalid) || !fields.product) return;
+        || (!fields.interest && fields.volume.invalid) || !fields.product) {
+        return;
+      }
     } else {
       if ((fields.tenor.invalid && !p20) || (fields.rba.invalidRBA1 || (fields.rba.invalidRBA2 && fields.rba.secondLeg)) && p20 || fields.offer_price.invalid
-        || fields.bid_price.invalid || (!fields.interest && fields.volume.invalid) || !fields.product) return;
+        || fields.bid_price.invalid || (!fields.interest && fields.volume.invalid) || !fields.product) {
+        return;
+      }
     }
     // Make sure a trader was chosen.
     if (typeof fields.trader.id === 'undefined') {
@@ -118,6 +158,8 @@
     
     // If the volume is negative convert the value to minimum market parcel.
     let ap = fields.product;
+    // Normalize product 103 (RBA OIS page) to product 20 (OIS) for backend
+    if (ap == 103) ap = 20;
     let vol = fields.volume.value <= 0 ? fields.volume_mmp : fields.volume.value;
     // ensure the volume is positive before submitting an order
     if(!fields.interest && (isNaN(vol) || vol == null || vol <= 0)) {

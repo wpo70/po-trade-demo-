@@ -2,9 +2,12 @@
   import trades from '../../stores/trades';
   import swaption_orders from '../../stores/swaption_orders';
   import liquidityTrades from '../../stores/liquidityTrades';
+
   import interest_groups from '../../stores/interest_groups';
+
   import traders from '../../stores/traders';
   import products from '../../stores/products';
+
   import trade_count from '../../stores/trade_count';
   import swaptions_count from '../../stores/swaptions_count';
   import liquidity_trade_count from '../../stores/liquidity_trade_count';
@@ -13,8 +16,8 @@
   import Filters from './Filters/Filters.svelte';
 
   import { toRBATenor, toTenor } from '../../common/formatting';
-  import config from '../../../config.json'
-  
+  import Toasts from '../Toasts.svelte';
+  import { toasts } from '../../stores/toast';
   import { createEventDispatcher } from 'svelte';
   const dispatch = createEventDispatcher();
 
@@ -200,7 +203,7 @@
   }
 
   // ---------------- set and get Functions ---------------- //
-  let excludeTest = config.env == "prod";
+  let excludeTest = true;
   let selectedTable = "Trades" // default
   function setSelectedTable(newTable) {
     selectedTable = newTable;
@@ -256,6 +259,7 @@
             </div>
             {/each}
         </div>
+        {#if $toasts }<div class="toast"><Toasts /></div>{/if}
     </div>
     <div class='main-content tradehistory'>
       <div class="tradehistory-filter">
@@ -322,6 +326,13 @@
       height: 100%;
       justify-content: left;
 
+    }
+    
+    .toast {
+      position: fixed;
+      right: 2rem;
+      margin-left: auto;
+      z-index: 100;
     }
 
     .tradehistory-filter{

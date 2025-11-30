@@ -39,7 +39,10 @@ let has_bid_interest, the_bid_interest, bid_interest_bank;
 // Reactive calculations for offers in the price group of the current row.
 $: {
   let b = $brokers; // Trigger reactivity when the brokers store is updated.
-  if (price_group.offers.length > row && !price_group.offers[row].eoi) {
+  if (!price_group?.offers) {
+    has_offer = false;
+    has_offer_interest = false;
+  } else if (price_group.offers.length > row && !price_group.offers[row].eoi) {
     has_offer = true;
     the_offer = price_group.offers[row];
     offer_bank = traders.bankName(the_offer.trader_id);
@@ -52,7 +55,7 @@ $: {
     has_offer = false;
   }
 
-  if(price_group.offers.length > row && price_group.offers[row].eoi) {
+  if(price_group?.offers?.length > row && price_group.offers[row].eoi) {
     has_offer_interest = true;
     the_offer_interest = price_group.offers[row];
     offer_interest_bank = traders.bankName(the_offer_interest.trader_id);
@@ -69,7 +72,10 @@ $: {
 
 $: {
   let b = $brokers; // Trigger reactivity when the brokers store is updated.
-  if (price_group.bids.length > row && !price_group.bids[row].eoi) {
+  if (!price_group?.bids) {
+    has_bid = false;
+    has_bid_interest = false;
+  } else if (price_group.bids.length > row && !price_group.bids[row].eoi) {
     has_bid = true;
     the_bid = price_group.bids[row];
     bid_bank = traders.bankName(the_bid.trader_id);
@@ -81,7 +87,7 @@ $: {
   } else {
     has_bid = false;
   }
-  if(price_group.bids.length > row && price_group.bids[row].eoi) {
+  if(price_group?.bids?.length > row && price_group.bids[row].eoi) {
     has_bid_interest = true;
     the_bid_interest = price_group.bids[row];
     bid_interest_bank = traders.bankName(the_bid_interest.trader_id);
@@ -102,7 +108,7 @@ let bid_is_tradable = false;
 // detirmines if the offer of this row should be highlighted as existing in a trade
 $: {
   let tradesStore = $tradess; // Just used to make this section react to changes in the tradess store
-  let price = price_group.offers[row];
+  let price = price_group?.offers?.[row];
   if (price){
     if (!price.eoi){
       let links = price.links;
@@ -116,7 +122,7 @@ $: {
         let found = false;
         let possible = tradess.containsOrder(links)[0];
         if (possible){ 
-          for (let p of price_group.bids) {
+          for (let p of (price_group?.bids ?? [])) {
             let allOrders = links.concat(p.links);
             if (allOrders.every((o) => possible.getAllOrders().includes(o)) && 
                 JSON.stringify(price.years) === JSON.stringify(p.years) &&
@@ -136,7 +142,7 @@ $: {
 // detirmines if the bid of this row should be highlighted as existing in a trade
 $: {
   let tradesStore = $tradess; // Just used to make this section react to changes in the tradess store
-  let price = price_group.bids[row];
+  let price = price_group?.bids?.[row];
   if (price){
     if (!price.eoi){
       let links = price.links;
@@ -150,7 +156,7 @@ $: {
         let found = false;
         let possible = tradess.containsOrder(links)[0];
         if (possible){ 
-          for (let p of price_group.offers) {
+          for (let p of (price_group?.offers ?? [])) {
             let allOrders = links.concat(p.links);
 
             if (allOrders.every((o) => possible.getAllOrders().includes(o)) && 
@@ -168,7 +174,7 @@ $: {
   }
 }
 
-let editable = price_group.product_id == 17;
+let editable = price_group?.product_id == 17;
 let editing = false;
 let html_row;
 $: { if (row === 1 && html_row) {
@@ -180,11 +186,12 @@ $: { if (row === 1 && html_row) {
 let mid;
 $: refreshMid($prices);
 function refreshMid () {
+  if (!price_group) return;
   if (row == 1) {
     price_group = prices.getPriceGroup(price_group);
   } 
-  mid = (price_group.product_id == 1 || price_group.product_id == 3 || price_group.product_id == 20) && price_group.years.length != 1 ? 
-          toBPPrice(price_group.mid_point) : toPrice(price_group.mid_point);
+  mid = (price_group?.product_id == 1 || price_group?.product_id == 3 || price_group?.product_id == 20) && (price_group?.years?.length ?? 0) != 1 ? 
+          toBPPrice(price_group?.mid_point ?? 0) : toPrice(price_group?.mid_point ?? 0);
 }
 
 function handleOverride (event) {
@@ -207,8 +214,8 @@ function handleOverride (event) {
         dismissible: true,
         timeout: 1000,
       });
-      let quote = quotes.get(price_group.product_id, price_group.years[0]);
-      websocket.overrideQuote(quote, ovr, $currency_state);
+      let quote = quotes.get(price_group?.product_id, price_group?.years?.[0]);
+      if (quote) websocket.overrideQuote(quote, ovr, currency_state.get_cur());
     }
   }
 }
@@ -272,16 +279,16 @@ function openFutRef (e, open, price) {
         
         <td style="text-align: left;" class={`${offer_is_tradable ? 'highlight' : ''}` }
         on:click={() => dispatch('show_legs', the_offer)} on:mouseenter={(e) => openFutRef(e, true, the_offer)} on:mouseleave={(e) => openFutRef(e, false)}>
-          <Marked order_={the_offer} oco={the_offer.oco} mark={offer_is_good}>{(the_offer.product_id == 1 || the_offer.product_id == 3 || the_offer.product_id == 20) && price_group.years.length != 1 ?  removeTrailZero(toBPPrice(the_offer.price)) :  removeTrailZero(toPrice(the_offer.price))}</Marked>{the_offer.isBelowMMP() ? '⚠️' : ''}
+          <Marked order_={the_offer} oco={the_offer.oco} mark={offer_is_good}>{(the_offer.product_id == 1 || the_offer.product_id == 3 || the_offer.product_id == 20) && (price_group?.years?.length ?? 0) != 1 ?  removeTrailZero(toBPPrice(the_offer.price)) :  removeTrailZero(toPrice(the_offer.price))}</Marked>{the_offer.isBelowMMP() ? '⚠️' : ''}
         </td>
 
     {:else if has_offer_interest}
       <td on:click={() => dispatch('show_legs', the_offer_interest)}>
-        <Marked order_={null}  interest={true}>{offer_interest_bank}</Marked>
+        <Marked order_={null}  interest={true}>{offer_interest_bank}</Marked>{offer_is_old ? '❄️' : ''}
       </td>
       {#if the_offer_interest.price != null}
         <td style="text-align: left;" on:click={() => dispatch('show_legs', the_offer_interest)} on:mouseenter={(e) => openFutRef(e, true, the_offer_interest)} on:mouseleave={(e) => openFutRef(e, false)}>
-          <Marked order_={null}  interest={true}>{(the_offer_interest.product_id == 1 || the_offer_interest.product_id == 3 || the_offer_interest.product_id == 20) && price_group.years.length != 1 ? removeTrailZero(toBPPrice(the_offer_interest.price)) : removeTrailZero(toPrice(the_offer_interest.price))}</Marked>
+          <Marked order_={null}  interest={true}>{(the_offer_interest.product_id == 1 || the_offer_interest.product_id == 3 || the_offer_interest.product_id == 20) && (price_group?.years?.length ?? 0) != 1 ? removeTrailZero(toBPPrice(the_offer_interest.price)) : removeTrailZero(toPrice(the_offer_interest.price))}</Marked>
         </td>
       {:else}
         <td style="text-align: left;" on:click={() => dispatch('show_legs', the_offer_interest)}/>
@@ -293,25 +300,25 @@ function openFutRef (e, open, price) {
 
     <!-- The centre cell shows something in rows 0 and 1 and nothing in row 2. -->
     {#if row === 0}  
-      <td class="centralCells {price_group.shape}" class:expandable={size > 3 || highlight} class:wide-shape={price_group.tenor.length > 6} class:highlight={offer_is_tradable}
+      <td class="centralCells {price_group?.shape ?? ''}" class:expandable={size > 3 || highlight} class:wide-shape={(price_group?.tenor?.length ?? 0) > 6} class:highlight={offer_is_tradable}
         on:click={() => dispatch('expand')}>
-        {#if price_group.product_id == 18}
-          {tenor ? tenor : new Date(price_group.tenor).toLocaleDateString()}
+        {#if price_group?.product_id == 18}
+          {tenor ? tenor : (price_group?.tenor ? new Date(price_group.tenor).toLocaleDateString() : '')}
         {:else}
-          {tenor ? tenor : price_group.tenor}
+          {tenor ? tenor : (price_group?.tenor ?? '')}
         {/if}
       </td>
     {:else if row === 1}
       {#if editable && !permission["View Only"]}
         <td contenteditable={editing} tabindex="0" on:blur={(e) => {handleOverride(e); editing = false;}} on:keypress={e => {if (e.key == "Enter") { editing = false; }}}
-          style="cursor: text;" class="mid-point centralCells {price_group.shape}" class:expandable={size > 3 || highlight} class:highlight={offer_is_tradable} 
+          style="cursor: text;" class="mid-point centralCells {price_group?.shape ?? ''}" class:expandable={size > 3 || highlight} class:highlight={offer_is_tradable} 
           on:click={(e) => {if (e) {editing = true;}}}>{removeTrailZero(mid)}</td>
       {:else}
-        <td class="mid-point centralCells {price_group.shape}" class:expandable={size > 3 || highlight} class:highlight={offer_is_tradable} 
+        <td class="mid-point centralCells {price_group?.shape ?? ''}" class:expandable={size > 3 || highlight} class:highlight={offer_is_tradable} 
           on:click={() => dispatch('expand')}>{removeTrailZero(mid)}</td>
       {/if}
     {:else}
-      <td class="centralCells {price_group.shape}" class:expandable={size > 3 || highlight} class:highlight={offer_is_tradable} on:click={() => dispatch('expand')}/>
+      <td class="centralCells {price_group?.shape ?? ''}" class:expandable={size > 3 || highlight} class:highlight={offer_is_tradable} on:click={() => dispatch('expand')}/>
     {/if}
 
     <!-- Show the bid only if there is one for this row. -->
@@ -319,7 +326,7 @@ function openFutRef (e, open, price) {
       <td style="text-align: right;" class={`${bid_is_tradable ? 'highlight' : ''}`}
         on:click={() => dispatch('show_legs', the_bid)} on:mouseenter={(e) => openFutRef(e, true, the_bid)} on:mouseleave={(e) => openFutRef(e, false)}
       >
-        {the_bid.isBelowMMP() ? '⚠️' : ''}<Marked order_={the_bid} oco={the_bid.oco} mark={bid_is_good}>{(the_bid.product_id == 1 || the_bid.product_id == 3 || the_bid.product_id == 20) && price_group.years.length != 1 ?  removeTrailZero(toBPPrice(the_bid.price)) :  removeTrailZero(toPrice(the_bid.price))}</Marked>
+        {the_bid.isBelowMMP() ? '⚠️' : ''}<Marked order_={the_bid} oco={the_bid.oco} mark={bid_is_good}>{(the_bid.product_id == 1 || the_bid.product_id == 3 || the_bid.product_id == 20) && (price_group?.years?.length ?? 0) != 1 ?  removeTrailZero(toBPPrice(the_bid.price)) :  removeTrailZero(toPrice(the_bid.price))}</Marked>
       </td>
       <td class={`${bid_is_tradable ? 'highlight' : ''}`}
         on:click={() => dispatch('show_legs', the_bid)}
@@ -332,13 +339,13 @@ function openFutRef (e, open, price) {
     {:else if has_bid_interest}
       {#if the_bid_interest.price != null}
       <td style="text-align: right;" on:click={() => dispatch('show_legs', the_bid_interest)} on:mouseenter={(e) => openFutRef(e, true, the_bid_interest)} on:mouseleave={(e) => openFutRef(e, false)}>
-        <Marked order_={null} interest={true}>{(the_bid_interest.product_id == 1 || the_bid_interest.product_id == 3 || the_bid_interest.product_id == 20) && price_group.years.length != 1 ?  removeTrailZero(toBPPrice(the_bid_interest.price)) :  removeTrailZero(toPrice(the_bid_interest.price))}</Marked>
+        <Marked order_={null} interest={true}>{(the_bid_interest.product_id == 1 || the_bid_interest.product_id == 3 || the_bid_interest.product_id == 20) && (price_group?.years?.length ?? 0) != 1 ?  removeTrailZero(toBPPrice(the_bid_interest.price)) :  removeTrailZero(toPrice(the_bid_interest.price))}</Marked>
       </td>
       {:else}
       <td style="text-align: right;" on:click={() => dispatch('show_legs', the_bid_interest)}/>
       {/if}
       <td on:click={() => dispatch('show_legs', the_bid_interest)} >
-        <Marked order_={null} interest={true}>{bid_interest_bank}</Marked>
+        {bid_is_old ? '❄️' : ''}<Marked order_={null} interest={true}>{bid_interest_bank}</Marked>
       </td>
     {:else}
       <td />
@@ -351,7 +358,7 @@ function openFutRef (e, open, price) {
 
 <style>
 .centralCells {
-  color: white;
+  opacity: 1;
   cursor: context-menu;
 }
 td {
@@ -368,12 +375,15 @@ td:last-child {
   text-align: right;
 }
 .outright {
+  color: white;
   background-color: darkblue !important;
 }
 .spread {
+  color: white;
   background-color: darkgreen !important;
 }
 .butterfly {
+  color: white;
   background-color: darkred !important;
 }
 .highlight {
@@ -388,15 +398,11 @@ td:last-child {
   cursor: pointer;
 }
 :global(.secondary-prices) .outright {
+  color: white;
   background-color: blue !important;
 }
-:global(.secondary-prices) .spread {
-  background-color: rgba(46, 168, 15) !important;
-}
-:global(.secondary-prices) .butterfly {
-  background-color: rgb(210, 25, 0) !important;
-}
 :global(.efpsps .white) .outright {
+  color: white !important;
   background-color: #161616 !important;
   border-left: solid 1px lightgrey;
   border-right: solid 1px lightgrey;
@@ -421,13 +427,20 @@ td:last-child {
 }
 :global(.broadsps) .outright {
   background-color: darkgreen !important;
+  color: white;
   cursor: pointer;
 }
 :global(.sps) .outright {
   background-color: indigo !important;
+  color: white;
 }
 :global(.fwd) .outright {
   background-color: rgb(216, 120, 24) !important;
+  color: white;
+}
+:global(.secondary-prices) .spread {
+  color: white;
+  background-color: rgba(51, 255, 0, 0.6) !important;
 }
 .mid-point {
   font-weight: bold;

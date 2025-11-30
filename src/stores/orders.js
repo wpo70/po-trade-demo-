@@ -184,20 +184,28 @@ const orders = (
     const removeOCOOrders = function (tickets) {
       let oco_orders_set = new Set();
       for (let t of tickets) {
+        // Skip if bic_offer or bic_bid is missing
+        if (!t.bic_offer?.bank_id || !t.bic_bid?.bank_id) {
+          console.warn('removeOCOOrders: Missing bank_id in ticket', t);
+          continue;
+        }
         let offer_oco = ocos.isOCO(t.bic_offer.bank_id, t.product_id);
         if (offer_oco) { ocos.setOCO(t.bic_offer.bank_id, t.product_id, false); }
         let bid_oco = ocos.isOCO(t.bic_bid.bank_id, t.product_id);
         if (bid_oco) { ocos.setOCO(t.bic_bid.bank_id, t.product_id, false); }
         let oco_orders_ = getOrdersByProduct(t.product_id)
-          .filter(i =>
-            (traders.get(i.trader_id).bank_id === t.bic_bid.bank_id && bid_oco) || 
-            (traders.get(i.trader_id).bank_id === t.bic_offer.bank_id && offer_oco))
+          .filter(i => {
+            const trader = traders.get(i.trader_id);
+            if (!trader?.bank_id) return false;
+            return (trader.bank_id === t.bic_bid.bank_id && bid_oco) || 
+                   (trader.bank_id === t.bic_offer.bank_id && offer_oco);
+          })
           .map(({order_id}) => order_id);
         // Adding oco orders to the set
         oco_orders_.forEach(i => oco_orders_set.add(i));
         // Excluding the main orders
-        oco_orders_set.delete(t.offer.order_id);
-        oco_orders_set.delete(t.bid.order_id);
+        oco_orders_set.delete(t.offer?.order_id);
+        oco_orders_set.delete(t.bid?.order_id);
       }
       if (oco_orders_set.size !== 0 ) websocket.deleteOrders(Array.from(oco_orders_set));
     };

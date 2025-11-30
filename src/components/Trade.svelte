@@ -5,7 +5,7 @@ import { createEventDispatcher } from 'svelte';
 
 import TradeOrder from './TradeOrder.svelte';
 
-import { genericToTenor, roundToNearest, toEFPSPSTenor, toPrice, toRBATenor, toTenor, toVolumeString } from '../common/formatting.js';
+import { roundToNearest, toEFPSPSTenor, toPrice, toRBATenor, toTenor, toVolumeString } from '../common/formatting.js';
 
 import active_product from '../stores/active_product.js';
 import currency_state from '../stores/currency_state.js';
@@ -45,12 +45,14 @@ $: {
   }
 }
 
+const isSTIR = (product_id) => product_id === 17 || product_id === 18 || product_id === 27;
+
 const getSTIRFwd = (orders) => {
   const fwdOrder = orders.find(order => {
     return order.fwd != null;
   });
 
-  if(fwdOrder) return fwdOrder.fwd * 12;
+  if(fwdOrder) return toTenor(fwdOrder.fwd);
 
   // if neither of the orders had a fwd, round down the difference between the start date and today
 
@@ -60,7 +62,7 @@ const getSTIRFwd = (orders) => {
   const start = new Date(order.start_date);
   const diff = (start - today) / (1000 * 60 * 60 * 24 * 30) ;
 
-  return Math.round(diff);
+  return Math.round(diff) + 'm';
 };
 
 let _yield = toPrice(trade.price);
@@ -71,16 +73,20 @@ function handleBlurYield () {
 </script>
 
 <div class="ticket">
-  {#if products.isStir(trade.offers[0].product_id ?? $active_product) || products.isFwd(trade.offers[0].product_id ?? $active_product)}
+  {#if isSTIR(trade.offers[0].product_id ?? $active_product)}
     <div style="display: flex; width: 100%">
-      <p class="tenor-label" style="padding-left: 2%; padding-right: 0% !important">
-        {products.name(trade.offers[0].product_id)}
-        {'\u2003'}
-        {genericToTenor(Object.assign({product_id:trade.offers[0].product_id, fwd:trade.offers[0].fwd, start_date:trade.offers[0].start_date}, trade))}
-        &ensp;@&ensp;
-        {toPrice(trade.price)}
-      </p>
-      <p class="tenor-label" style="text-align: right; flex-grow: 1; padding-right: 2%;">{$currency_state}</p>
+      {#if products.name(trade.offers[0].product_id) === "EFP SPS" || products.name(trade.offers[0].product_id) === "SPS 90" }
+        <p class="tenor-label" style="padding-left: 2%; padding-right: 0% !important">{products.name(trade.offers[0].product_id)}{'\u2003'}{toEFPSPSTenor(trade.offers[0].start_date)}&ensp;@&ensp;{toPrice(trade.price)}</p>
+        <p class="tenor-label" style="text-align: right; flex-grow: 1; padding-right: 2%;">{$currency_state.currency}</p>
+      {:else}
+        <p class="tenor-label" style="padding-left: 2%; padding-right: 0% !important">{products.name(trade.offers[0].product_id)}{'\u2003'}{trade.fwd*12}&nbsp;x&nbsp;{trade.fwd*12 + 3}&ensp;@&ensp;{toPrice(trade.price)}</p>
+        <p class="tenor-label" style="text-align: right; flex-grow: 1; padding-right: 2%;">{$currency_state.currency}</p>
+      {/if}
+    </div>
+  {:else if products.isFwd(trade.offers[0].product_id ?? $active_product)}
+    <div style="display: flex; width: 100%">
+      <p class="tenor-label" style="padding-left: 2%; padding-right: 0% !important">{products.name(trade.offers[0].product_id)}{'\u2003'}{toTenor(trade.fwd)}&nbsp;x&nbsp;{toTenor(trade.year)}&ensp;@&ensp;{toPrice(trade.price)}</p>
+      <p class="tenor-label" style="text-align: right; flex-grow: 1; padding-right: 2%;">{$currency_state.currency}</p>
     </div>
   {:else}
     <div style="display: flex; width: 100%">
@@ -101,7 +107,7 @@ function handleBlurYield () {
           <div class="tenor-label" on:click={() => dispatch("lockLeg", {year: trade.year})}><Unlocked style="align-self: center; height: 100%;"/></div>
         {/if}
       {/if}
-      <p class="tenor-label" style="text-align: right; width: 50%; padding-right: 2%;">{$currency_state}</p>
+      <p class="tenor-label" style="text-align: right; width: 50%; padding-right: 2%;">{$currency_state.currency}</p>
     </div>
   {/if}
   <dl>
@@ -120,6 +126,7 @@ function handleBlurYield () {
               order={trade.offers[idx]}
               bid={false}
               bind:reviewExists={reviewExists}
+              on:confirmed={() => dispatch('confirmed')}
               on:broUpdate={(e) => dispatch('broUpdate', {order_id: e.detail.order_id, brokerage: e.detail.brokerage, bid: false, year: trade.year})}
               on:bankDivisionUpdate={(e) => dispatch('bankDivisionUpdate', {order_id: e.detail.order_id, bank_div: e.detail.bank_div})}
             />
@@ -133,6 +140,7 @@ function handleBlurYield () {
                 order={trade.bids[idx]}
                 bid={true}
                 bind:reviewExists={reviewExists}
+                on:confirmed={() => dispatch('confirmed')}
                 on:broUpdate={(e) => dispatch('broUpdate', {order_id: e.detail.order_id, brokerage: e.detail.brokerage, bid: true, year: trade.year})}
                 on:bankDivisionUpdate={(e) => dispatch('bankDivisionUpdate', {order_id: e.detail.order_id, bank_div: e.detail.bank_div})}
               />

@@ -1,110 +1,41 @@
 <script>
 import { Tile } from 'carbon-components-svelte';
-import { createEventDispatcher, onMount } from 'svelte';
+import { createEventDispatcher } from 'svelte';
 import OrderForm from './OrderForm/OrderForm.svelte';
-import Pulltab from './Utility/Pulltab.svelte';
-import Close from "carbon-icons-svelte/lib/Close.svelte";
+import CloseLarge from "carbon-icons-svelte/lib/CloseLarge.svelte";
 
 const dispatch = createEventDispatcher();
 
 // The selected order, or null if none are selected
 
 export let selected;
-export let showOrderForm = true;
-export let selectionArray = [];
+export let showOrderForm;
+
 </script>
 
-{#if showOrderForm}
-  <div style="height:100%; background-color:var(--cds-ui-01);">
-    <h5 style="font-weight:bold; padding:16px;">Order Form</h5>
-    <div id="close_btn_orderform" on:click={() => {showOrderForm = false;}}>
-      <Close size={20}/> 
+<div>
+  <div style="display: flex; flex-direction: row; background-color: #292929;  justify-content:space-between; align-items: center;padding:5px; ">
+    <div style="font-weight: bold;  padding-left: 10px; color: #999; font-size: 1.2em; ">Order Form</div>
+    <div id="close_btn_indicator"  on:click={() => {showOrderForm = false}}>
+      <CloseLarge size={20} style="self-align:cennter; "/> 
     </div>
-    <Tile aria-labelledby="static-order-title" aria-describedby="static-order-content">
+  </div>
+  <Tile aria-labelledby="static-order-title" aria-describedby="static-order-content">
       <div style="position: relative">
         <div id="static-order-content">
-          <div style="--error-show:{selectionArray.length>1}" class={selectionArray.length > 1 ? "greyed-fade-in" : "greyed-fade-out"}>
-            <span style="--error-show:{selectionArray.length>1}" class={selectionArray.length > 1 ? "trader-error-fade-in" : "trader-error-fade-out"}>You cannot select multiple orders</span>
-            <OrderForm on:order_updated on:server_error on:reset={() => dispatch('reset')} selected={selectionArray.length == 1 ? selected : null}/>
-          </div>
+          <OrderForm on:order_updated on:server_error on:reset={() => {dispatch('reset');}} {selected}/>
         </div>
-      </div>
-    </Tile>
   </div>
-{:else}
-  <Pulltab direction="right" on:click={() => {showOrderForm = true;}}/>
-{/if}
-
-
+  </Tile>
+</div>
 <style>
-  #close_btn_orderform {
-    position: absolute;
-    top: 0px;
-    right: 0px;
-    padding: 10px;
+  #close_btn_indicator {
+    background-color: #262626;
+    padding: 5px;
     cursor: pointer;
     transition: all 150ms cubic-bezier(0.2, 0, 0.38, 0.9);
     &:hover {
-      background-color:  var(--cds-hover-selected-ui);
+      background-color:  var(--cds-interactive-02, #6f6f6f);
     }
   }
-
-.greyed-fade-in {
-  position: relative;
-  cursor: not-allowed !important;
-}
-
-.greyed-fade-in * {
-  user-select: none;
-  cursor: not-allowed !important; 
-}
-  
-.greyed-fade-in::before, .greyed-fade-out::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 70%;
-  background: radial-gradient(circle 200px at center, var(--cds-ui-background)  0%, var(--cds-ui-01) 100%);
-  opacity: var(--error-show);
-  transition: opacity 0.5s ease-in-out;
-}
-  
-.greyed-fade-in::before {
-  z-index: 1; 
-}
-
-.trader-error-fade-in,
-.trader-error-fade-out {
-  display: block !important;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  font-family: Arial, sans-serif;
-  font-size: 24px;
-  text-align: center;
-  opacity: var(--error-show);
-  transition: opacity 0.5s ease-in-out; 
-}
-
-.trader-error-fade-in {
-  opacity: 1; 
-  z-index: 2;
-}
-
-.trader-error-fade-out {
-  opacity: 0;
-}
-
-.greyed-fade-in::before {
-  opacity: 0.7;
-}
-
-.trader-error-fade-out, .greyed-fade-out::before {
-  opacity: 0; 
-}
-
 </style>

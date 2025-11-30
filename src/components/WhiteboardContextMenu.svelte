@@ -35,20 +35,16 @@
   function updateVars() {
     price_group = pg ??= price_group;
     centre_cells = cc ??= centre_cells;
-    specific_sps = !!centre_cells[0]?.closest(".sps");
   }
 
   let price_group = {};
   let centre_cells = [];
-  let specific_sps = false;
   let ctx_open = false;
   let ref;
   export let ctx_id = null;
   export let target_cells = [];
 
-  $: has_order = centre_cells[0]?.previousElementSibling.hasChildNodes()
-      || centre_cells[0]?.nextElementSibling.hasChildNodes()
-      || price_group.product_id == 18 && centre_cells[0]?.classList.contains("expandable");
+  $: has_order =  centre_cells[0]?.previousElementSibling.hasChildNodes() || centre_cells[0]?.nextElementSibling.hasChildNodes();
   $: is_favourite = $active_product != 18 && price_group?.product_id && price_group.years ? preferences.isFavourite(price_group.product_id, price_group.years, price_group.fwd) : false;
   
   $: permission = user.getPermission($brokers);
@@ -118,9 +114,9 @@
       icon={DocumentAdd}
       id="add_order"
       indented
-      labelText="Add Order"
       disabled={permission["View Only"]}
-      on:mouseenter={() => {if(!permission["View Only"]){timeout = setTimeout(triggerOfferBid, 200)}}}
+      labelText="Add Order"
+      on:mouseenter={() => timeout = setTimeout(triggerOfferBid, 200)}
       on:mouseleave={() => clearTimeout(timeout)}
       on:click={() => {quickOrder(false);}}
     />
@@ -169,7 +165,7 @@
     labelText="Price History"
     on:click={() => dispatch("get_history", {price_group})}
   />
-  {#if $active_product != -1 && price_group.product_id != 18 || price_group.product_id == 18 && !specific_sps}
+  {#if $active_product != -1 && $active_product != 18}
     <ContextMenuDivider/>
     <ContextMenuOption
       indented
@@ -212,12 +208,7 @@
 <QuickOrderForm bind:qorder={quick_order_form} on:server_error={() => {console.log("Server error occurred with quick order.");}} {selected} />
 
 <!-- ADD TENOR MODAL -->
-<WhiteboardAddTenorModal
-  bind:open={at_modal_open}
-  product_id={price_group.product_id}
-  sps_period={price_group.product_id == 18 && price_group.years[0]*12}
-  on:added={() => {dispatch("changed");}}
-/>
+<WhiteboardAddTenorModal bind:open={at_modal_open} product_id={price_group.product_id} on:added={() => {dispatch("changed");}}/>
 
 <style>
   :global(.bid_offer_buttons .bx--menu-option__info) {

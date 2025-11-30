@@ -1,22 +1,23 @@
 <script>
   import {
     Form,
+    FormGroup,
     TextInput,
     Button,
     NumberInput,
+    Modal,
   } from "carbon-components-svelte";
   import Validator from "../common/validator";
   import websocket from "../common/websocket";
   import brokers from "../stores/brokers";
   import user from "../stores/user";
   import { createEventDispatcher } from "svelte";
-  import DraggableModal from "./Utility/DraggableModal.svelte";
   
-  export let defaults = undefined;
   export let broker = undefined;
   export let open;
   
   const dispatch = createEventDispatcher();
+  export let defaults;
   let currentuser;
   let error_message = "";
   $: {let b = $brokers; currentuser = brokers.get(user.get());}
@@ -153,83 +154,85 @@
   }
 </script>
 
-<div class= "broker_form">
-  <DraggableModal
-    on:close={() => copyBrokerToForm(undefined)}
-    bind:open 
-    heading="Broker Form"
-  >
-    <svelte:fragment slot="body">
-      <Form on:submit={handleSubmit}>
-        {#if error_message}
-          <div style="color:red">
-            <p>{error_message}</p>
-          </div>
-        {/if}
-        <div class="grid">
-          <div class="sm-grid-item" on:keypress|stopPropagation>
-            <TextInput
-              bind:value={fields.firstname.str}
-              bind:dirty={fields.firstname.dirty}
-              bind:invalid={fields.firstname.invalid}
-              labelText="First Name"
-              invalidText={fields.firstname.error_message}
-              required
-              />
-          </div>
-          <div class="sm-grid-item" on:keypress|stopPropagation>
-            <TextInput
-              bind:value={fields.lastname.str}
-              bind:dirty={fields.lastname.dirty}
-              bind:invalid={fields.lastname.invalid}
-              labelText="Last Name"
-              invalidText={fields.lastname.error_message}
-              required
-            />
-          </div>
-          <div class="sm-grid-item"  on:keypress|stopPropagation>
-            <NumberInput
-              bind:value={fields.accesslevel.str}
-              bind:dirty={fields.accesslevel.dirty}
-              bind:invalid={fields.accesslevel.invalid}
-              label="Access Level"
-              invalidText={fields.accesslevel.error_message}
-              required
-              min={1}
-              max={999}
-            />              
-          </div>
-          {#if fields.broker_id === 0}
-            <div class="lg-grid-item"  on:keypress|stopPropagation>
-              <TextInput
-                bind:value={fields.username.str}
-                bind:dirty={fields.username.dirty}
-                bind:invalid={fields.username.invalid}
-                labelText="Username"
-                invalidText={fields.username.error_message}
-                required
-              />
-            </div>
-          {/if}
-          <div class="lg-grid-item"  on:keypress|stopPropagation>
-            <TextInput
-              type="email"
-              bind:value={fields.email.str}
-              bind:dirty={fields.email.dirty}
-              bind:invalid={fields.email.invalid}
-              labelText="Email"
-              invalidText={fields.email.error_message}
-              required
-            />
-          </div>
+<Modal
+  on:close={() => copyBrokerToForm(undefined)}
+  passiveModal
+  preventCloseOnClickOutside
+  bind:open
+  modalHeading="Broker Form"
+>
+  <Form on:submit={handleSubmit}>
+    {#if error_message}
+      <div style="color:red">
+        <p>{error_message}</p>
+      </div>
+    {/if}
+    <div class="grid">
+      <div class="sm-grid-item" on:keypress|stopPropagation>
+        <TextInput
+          bind:value={fields.firstname.str}
+          bind:dirty={fields.firstname.dirty}
+          bind:invalid={fields.firstname.invalid}
+          labelText="First Name"
+          invalidText={fields.firstname.error_message}
+          required
+        />
+      </div>
+      <div class="sm-grid-item"   on:keypress|stopPropagation>
+        <TextInput
+          bind:value={fields.lastname.str}
+          bind:dirty={fields.lastname.dirty}
+          bind:invalid={fields.lastname.invalid}
+          labelText="Last Name"
+          invalidText={fields.lastname.error_message}
+          required
+        />
+      </div>
+      <div class="sm-grid-item"  on:keypress|stopPropagation>
+        <NumberInput
+          bind:value={fields.accesslevel.str}
+          bind:dirty={fields.accesslevel.dirty}
+          bind:invalid={fields.accesslevel.invalid}
+          label="Access Level"
+          invalidText={fields.accesslevel.error_message}
+          required
+          min={1}
+          max={999}
+          />
+          <!--
+            on:change={(e) => {if (e.detail > 999) { fields.accesslevel.error_message = "Max number is 999";}}} 
+            Defaults to 3 if accesslevel enter is over 5 and under 999.
+          -->
+      </div>
+      {#if fields.broker_id === 0}
+        <div class="lg-grid-item"  on:keypress|stopPropagation>
+          <TextInput
+            bind:value={fields.username.str}
+            bind:dirty={fields.username.dirty}
+            bind:invalid={fields.username.invalid}
+            labelText="Username"
+            invalidText={fields.username.error_message}
+            required
+          />
         </div>
-        <Button type="submit" kind={"primary"}>
-          {fields.broker_id === 0 ? "Add Broker" : "Update Broker"}
-        </Button>
-      </Form>
-    </svelte:fragment>
-  </DraggableModal>
-</div>
+      {/if}
+      <div class="lg-grid-item"  on:keypress|stopPropagation>
+        <TextInput
+          type="email"
+          bind:value={fields.email.str}
+          bind:dirty={fields.email.dirty}
+          bind:invalid={fields.email.invalid}
+          labelText="Email"
+          invalidText={fields.email.error_message}
+          required
+        />
+      </div>
+    </div>
+    <Button type="submit" kind={"primary"}>
+      {fields.broker_id === 0 ? "Add Broker" : "Update Broker"}
+    </Button>
+  </Form>
+</Modal>
 
 <style>
   .grid {
@@ -247,7 +250,4 @@
     grid-column: span 2;
   }
 
-:global(.broker_form .bx--modal-container){
-  width: 1000px;
-}
 </style>

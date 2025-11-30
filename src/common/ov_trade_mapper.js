@@ -43,12 +43,12 @@ export async function mapTrades(tickets) {
   for (let ticket of tickets.tickets) {
     // Get bank and trader name of offer and bid
     o_trader = traders.get(ticket.offer.trader_id);
-    o_bank = banks.get(o_trader.bank_id);
+    o_bank = o_trader ? banks.get(o_trader.bank_id) : null;
     o_interest_group = interest_groups.get(ticket.offer_bank_division_id);
     o_sbd = bank_divisions.get(ticket.offer_bank_division_id);
 
     b_trader = traders.get(ticket.bid.trader_id);
-    b_bank = banks.get(b_trader.bank_id);
+    b_bank = b_trader ? banks.get(b_trader.bank_id) : null;
     b_interest_group = interest_groups.get(ticket.bid_bank_division_id);
     b_sbd = bank_divisions.get(ticket.bid_bank_division_id);
 
@@ -69,29 +69,29 @@ export async function mapTrades(tickets) {
 
         // Counterparty A (bid side)
 
-        'cpty': b_bank.ov_bank_id , // short code bank name
+        'cpty': b_bank?.ov_bank_id ?? '' , // short code bank name
         'CptyDirectionA': true, // always buyer (bid), set true
-        'CptyATrader': b_trader.ov_trader_id, // trader id (use ov trader id)
-        'bbg': b_trader.bbg_id, // trader's bloomberg id
-        'TeraCptyA': b_sbd.firm_id, // bank's tera counterparty id
-        'TeraUser1': b_sbd.account_id, // bank's tera user id
+        'CptyATrader': b_trader?.ov_trader_id ?? '', // trader id (use ov trader id)
+        'bbg': b_trader?.bbg_id ?? '', // trader's bloomberg id
+        'TeraCptyA': b_sbd?.firm_id ?? '', // bank's tera counterparty id
+        'TeraUser1': b_sbd?.account_id ?? '', // bank's tera user id
         'Interest Group': b_interest_group, // bank's interest group
         'Brokerage_A': ticket.bid_brokerage, // brokerage of bid
-        'ClearingMemberID_A': b_sbd.clearing_id,
-        "BicCptyA": ticket.bic_bid.markitbiccode,
+        'ClearingMemberID_A': b_sbd?.clearing_id ?? '',
+        "BicCptyA": ticket.bic_bid?.markitbiccode ?? '',
 
         // Counterparty B (offer side)
 
-        'cpty_2': o_bank.ov_bank_id , // short code bank name
+        'cpty_2': o_bank?.ov_bank_id ?? '' , // short code bank name
         'CptyDirectionB': false, // always receiver (offer), set false
-        'CptyBTrader': o_trader.ov_trader_id, // trader id (use ov trader id)
-        'bbg2': o_trader.bbg_id, // trader's bloomberg id
-        'TeraCptyB': o_sbd.firm_id, // bank's tera counterparty id
-        'TeraUser2': o_sbd.account_id, // bank's tera user id
+        'CptyBTrader': o_trader?.ov_trader_id ?? '', // trader id (use ov trader id)
+        'bbg2': o_trader?.bbg_id ?? '', // trader's bloomberg id
+        'TeraCptyB': o_sbd?.firm_id ?? '', // bank's tera counterparty id
+        'TeraUser2': o_sbd?.account_id ?? '', // bank's tera user id
         'Interest Group B': o_interest_group, // bank's interest group
         'Brokerage_B': ticket.offer_brokerage, // brokerage of offer
-        'ClearingMemberID_B': o_sbd.clearing_id,
-        "BicCptyB": ticket.bic_offer.markitbiccode,
+        'ClearingMemberID_B': o_sbd?.clearing_id ?? '',
+        "BicCptyB": ticket.bic_offer?.markitbiccode ?? '',
 
         // COMMON VALUES
 
@@ -241,12 +241,12 @@ export function mapRBAOIS(ticket) {
   let sef = ticket.sef;
   let rba = ticket.rba;
   let b_trader = traders.get(ticket.fixed_payer_id);
-  let b_bank = banks.get(b_trader.bank_id);
+  let b_bank = b_trader ? banks.get(b_trader.bank_id) : null;
   let b_interest_group = interest_groups.get(ticket.fixed_bank_division_id);
   let b_sbd = bank_divisions.get(ticket.fixed_bank_division_id);
 
   let o_trader = traders.get(ticket.floating_payer_id);
-  let o_bank = banks.get(o_trader.bank_id);
+  let o_bank = o_trader ? banks.get(o_trader.bank_id) : null;
   let o_interest_group = interest_groups.get(ticket.floating_bank_division_id);
   let o_sbd = bank_divisions.get(ticket.floating_bank_division_id);
 
@@ -265,29 +265,29 @@ export function mapRBAOIS(ticket) {
 
       // Counterparty A (bid side)
 
-      'cpty': b_bank.ov_bank_id , // Short code bank name
+      'cpty': b_bank?.ov_bank_id ?? '' , // Short code bank name
       'CptyDirectionA': true, // always buyer (bid), set true
-      'CptyATrader': b_trader.ov_trader_id, // trader id (use ov trader id)
-      //'bbg': b_trader.bbg_id, // trader's bloomberg id
-      'TeraCptyA': b_sbd.firm_id, // bank's tera counterparty id
-      'TeraUser1': b_sbd.account_id, // bank's tera user id
+      'CptyATrader': b_trader?.ov_trader_id ?? '', // trader id (use ov trader id)
+      //'bbg': b_trader?.bbg_id ?? '', // trader's bloomberg id
+      'TeraCptyA': b_sbd?.firm_id ?? '', // bank's tera counterparty id
+      'TeraUser1': b_sbd?.account_id ?? '', // bank's tera user id
       'Interest Group': b_interest_group, // bank's interest group
       'Brokerage_A': ticket.bid_brokerage, // brokerage of bid
-      'ClearingMemberID_A': b_sbd.clearing_id,
-      "BicCptyA": ticket.bic_bid.markitbiccode,
+      'ClearingMemberID_A': b_sbd?.clearing_id ?? '',
+      "BicCptyA": ticket.bic_bid?.markitbiccode ?? '',
 
       // Counterparty B (offer side)
 
-      'cpty_2': o_bank.ov_bank_id, // Short code bank name
+      'cpty_2': o_bank?.ov_bank_id ?? '', // Short code bank name
       'CptyDirectionB': false, // always receiver (offer), set false
-      'CptyBTrader': o_trader.ov_trader_id, // trader id (use ov trader id)
-      //'bbg2': o_trader.bbg_id, // trader's bloomberg id
-      'TeraCptyB': o_sbd.firm_id, // bank's tera counterparty id
-      'TeraUser2': o_sbd.account_id, // bank's tera user id
+      'CptyBTrader': o_trader?.ov_trader_id ?? '', // trader id (use ov trader id)
+      //'bbg2': o_trader?.bbg_id ?? '', // trader's bloomberg id
+      'TeraCptyB': o_sbd?.firm_id ?? '', // bank's tera counterparty id
+      'TeraUser2': o_sbd?.account_id ?? '', // bank's tera user id
       'Interest Group B': o_interest_group, // bank's interest group
       'Brokerage_B': ticket.offer_brokerage, // brokerage of offer
-      'ClearingMemberID_B': o_sbd.clearing_id,
-      "BicCptyB": ticket.bic_offer.markitbiccode,
+      'ClearingMemberID_B': o_sbd?.clearing_id ?? '',
+      "BicCptyB": ticket.bic_offer?.markitbiccode ?? '',
 
       // COMMON VALUES
       // RBAOIS: Send Fixed End Date, Start Date instead of Tenor
@@ -337,17 +337,17 @@ export function mapRBASwaption(ticket) {
 export function mapSwaption(ticket){
 
   let buyer = {
-    bank: banks.get(ticket.buyer.bank_id),
-    ov_id: ticket.buyer.ov_trader_id,
-    bank_division: bank_divisions.get(ticket.buyer.bank_division_id),
-    interest_group: interest_groups.get(ticket.buyer.bank_division_id)
+    bank: ticket.buyer?.bank_id ? banks.get(ticket.buyer.bank_id) : null,
+    ov_id: ticket.buyer?.ov_trader_id,
+    bank_division: bank_divisions.get(ticket.buyer?.bank_division_id),
+    interest_group: interest_groups.get(ticket.buyer?.bank_division_id)
   };
 
   let seller = {
-    bank: banks.get(ticket.seller.bank_id),
-    ov_id: ticket.seller.ov_trader_id,
-    bank_division: bank_divisions.get(ticket.seller.bank_division_id),
-    interest_group: interest_groups.get(ticket.seller.bank_division_id)
+    bank: ticket.seller?.bank_id ? banks.get(ticket.seller.bank_id) : null,
+    ov_id: ticket.seller?.ov_trader_id,
+    bank_division: bank_divisions.get(ticket.seller?.bank_division_id),
+    interest_group: interest_groups.get(ticket.seller?.bank_division_id)
   };
 
   let physicalSettlement;
@@ -384,29 +384,29 @@ export function mapSwaption(ticket){
 
       // Counterparty A (bid side)
 
-      'cpty': buyer.bank.ov_bank_id , // short code bank name
+      'cpty': buyer.bank?.ov_bank_id ?? '' , // short code bank name
       'CptyDirectionA': true, // always buyer (bid), set true
       'CptyATrader': buyer.ov_id, // trader id (use ov trader id)
-      //'bbg': b_trader.bbg_id, // trader's bloomberg id
-      'TeraCptyA': buyer.bank_division.firm_id, // bank's tera counterparty id
-      'TeraUser1': buyer.bank_division.account_id, // bank's tera user id
+      //'bbg': b_trader?.bbg_id ?? '', // trader's bloomberg id
+      'TeraCptyA': buyer.bank_division?.firm_id ?? '', // bank's tera counterparty id
+      'TeraUser1': buyer.bank_division?.account_id ?? '', // bank's tera user id
       'Interest Group': buyer.interest_group, // bank's interest group
       'Brokerage_A': ticket.buyer_brokerage, // brokerage of bid TODO
-      'ClearingMemberID_A': buyer.bank_division.clearing_id,
-      "BicCptyA": ticket.bic_buyer.markitbiccode,
+      'ClearingMemberID_A': buyer.bank_division?.clearing_id ?? '',
+      "BicCptyA": ticket.bic_buyer?.markitbiccode ?? '',
 
       // Counterparty B (offer side)
 
-      'cpty_2': seller.bank.ov_bank_id , // short code bank name
+      'cpty_2': seller.bank?.ov_bank_id ?? '' , // short code bank name
       'CptyDirectionB': false, // always receiver (offer), set false
       'CptyBTrader': seller.ov_id, // trader id (use ov trader id)
-      //'bbg2': o_trader.bbg_id, // trader's bloomberg id
-      'TeraCptyB': seller.bank_division.firm_id, // bank's tera counterparty id
-      'TeraUser2': seller.bank_division.account_id, // bank's tera user id
+      //'bbg2': o_trader?.bbg_id ?? '', // trader's bloomberg id
+      'TeraCptyB': seller.bank_division?.firm_id ?? '', // bank's tera counterparty id
+      'TeraUser2': seller.bank_division?.account_id ?? '', // bank's tera user id
       'Interest Group B': seller.interest_group, // bank's interest group
       'Brokerage_B': ticket.seller_brokerage, // brokerage of offer TODO
-      'ClearingMemberID_B': seller.bank_division.clearing_id,
-      "BicCptyB": ticket.bic_seller.markitbiccode,
+      'ClearingMemberID_B': seller.bank_division?.clearing_id ?? '',
+      "BicCptyB": ticket.bic_seller?.markitbiccode ?? '',
 
       // COMMON VALUES
 
@@ -905,7 +905,7 @@ export function tickerString(year, start) {
 
   let current_year = date.getFullYear() % 10;
   ticker_string += current_year;
-  
+
   return ticker_string;
 }
 
@@ -941,49 +941,44 @@ function futureCode(date) {
   const SEP_15 = new Date(THIS_YEAR, 8, 15, 12);
   const DEC_15 = new Date(THIS_YEAR, 11, 15, 12);
 
-  // Convert start date to locale date and set at 12:00
-  let LOCALE_DATE = new Date(date).toLocaleDateString();
-  let DATE = new Date(LOCALE_DATE.split("/")[2],LOCALE_DATE.split("/")[1], LOCALE_DATE.split("/")[0], 12);
-
-  if (DATE.getTime() < DEC_15_PREV.getTime()) {
+  if (date.getTime() < DEC_15_PREV.getTime()) {
     throw new Error(`futureCode(): received date earlier than 15 Dec ${LAST_YEAR}`);
   }
 
   // From 15 Dec previous year 12:00 to 15 Mar 11:59, use 'H'
 
-  if (DATE.getTime() >= DEC_15_PREV.getTime() && DATE.getTime() < MAR_15.getTime()) {
+  if (date.getTime() >= DEC_15_PREV.getTime() && date.getTime() < MAR_15.getTime()) {
     // If date is less than JAN_01 00:00 add 1 to year
 
-    if (DATE.getTime() < JAN_01.getTime()) {
-      DATE.setFullYear(DATE.getFullYear() + 1);
+    if (date.getTime() < JAN_01.getTime()) {
+      date.setFullYear(date.getFullYear() + 1);
     }
 
     return 'H';
   }
 
   // From 15 Mar 12:00 to 15 Jun 11:59, use 'M'
-  
 
-  if (DATE.getTime() >= MAR_15.getTime() && DATE.getTime() < JUN_15.getTime()) {
+  if (date.getTime() >= MAR_15.getTime() && date.getTime() < JUN_15.getTime()) {
     return 'M';
   }
 
   // From 15 Jun 12:00 to 15 Sep 11:59, use 'U'
 
-  if (DATE.getTime() >= JUN_15.getTime() && DATE.getTime() < SEP_15.getTime())  {
+  if (date.getTime() >= JUN_15.getTime() && date.getTime() < SEP_15.getTime()) {
     return 'U';
   }
 
   // From 15 Sep 12:00 to 15 Dec 12:00, use 'Z'
 
-  if (DATE.getTime() >= SEP_15.getTime() && DATE.getTime() < DEC_15.getTime()) {
+  if (date.getTime() >= SEP_15.getTime() && date.getTime() < DEC_15.getTime()) {
     return 'Z';
   }
 
   // Beyond dec_15 use 'H' and increase year by 1
 
-  if (DATE.getTime() >= DEC_15.getTime()) {
-    DATE.setFullYear(DATE.getFullYear() + 1);
+  if (date.getTime() >= DEC_15.getTime()) {
+    date.setFullYear(date.getFullYear() + 1);
     return 'H';
   }
 }

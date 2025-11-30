@@ -1,8 +1,8 @@
 'use strict';
 
-const { sendToAllClients, sendToGateway, count, sendToOneClient} = require('./send.js');
+const { sendToAllClients, sendToGateway, stop, count, sendToOneClient} = require('./send.js');
 const { activeGateway, sessions} = require('./map.js');
-const { updateQuotes, getTickerSecurities, setFWDMids, getEodSecurities } = require('./db/quotes.js');
+const { updateQuotes, getTickerSecurities, setFWDMids } = require('./db/quotes.js');
 const { sendToOneview } = require('./ov_api.js');
 const { logger } = require('./utils/logger.js');
 const { query } = require('./db');
@@ -19,10 +19,6 @@ const ticker_securities = [];
 getTickerSecurities(ticker_securities);
 const fx_securities = [];
 getFXSecurities(fx_securities);
-const eod_securities = [];
-getEodSecurities(eod_securities);
-
-let last_parse;
 // Handle messages received from a gateway websocket.
 module.exports.gatewayReceived = async function (message, sess) {
   // Parse the JSON message.
@@ -49,6 +45,22 @@ module.exports.gatewayReceived = async function (message, sess) {
       client_message.gateway_updated = {id: sess.id, blp_connected: msg.blp_connected, user: msg.user}
     } else {
       client_message.gateway_updated = {id: sess.id, blp_connected: msg.blp_connected}
+    }
+  }
+
+  if (msg.hasOwnProperty('sheet_connected')) {
+    logger.info('Received gateway message sheet_connected');
+    sess.sheet_connected = msg.sheet_connected;
+    if (!msg.sheet_connected) {
+      sess.hasNoSheet = true;
+      tryConnectSheet();
+      client_message.gateway_updated = {id: sess.id, sheet_connected: msg.sheet_connected}
+    } else {
+      for (let sess of sessions.values()) {
+        sess.hasNoSheet = false;
+      }
+      sess.user = msg.user;
+      client_message.gateway_updated = {id: sess.id, sheet_connected: msg.sheet_connected, user: msg.user}
     }
   }
 
@@ -79,9 +91,26 @@ module.exports.gatewayReceived = async function (message, sess) {
   if (msg.hasOwnProperty('set_quotes')) {
     if (count[sess.id] != 0) count[sess.id]--;    
 
-    if (msg.set_quotes) {
-      client_message.set_quotes = await updateQuotes(msg.set_quotes);
-      sendToOneview({ update_mids: client_message.set_quotes });
+    stop();
+    // logger.info(message);
+    client_message.set_quotes = await updateQuotes(msg.set_quotes);
+    sendToOneview({ update_mids: client_message.set_quotes });
+    // logger.info('set_quotes %s', JSON.stringify(client_message.set_quotes));
+  }
+
+  if (msg.hasOwnProperty('set_sheet_data')) {
+    client_message.set_fwd_mids = {};
+    if (msg.set_sheet_data.hasOwnProperty('Set_Forward_IRS')) {
+      client_message.set_fwd_mids["1"] = await setFWDMids(JSON.parse(msg.set_sheet_data["Set_Forward_IRS"]), 1);
+    }
+    if (msg.set_sheet_data.hasOwnProperty('Set_Forward_3v1')) {
+      client_message.set_fwd_mids["4"] = await setFWDMids(JSON.parse(msg.set_sheet_data["Set_Forward_3v1"]), 4);
+    }
+    if (msg.set_sheet_data.hasOwnProperty('Set_Forward_6v3')) {
+      client_message.set_fwd_mids["5"] = await setFWDMids(JSON.parse(msg.set_sheet_data["Set_Forward_6v3"]), 5);
+    }
+    if (msg.set_sheet_data.hasOwnProperty('Set_Forward_B/S')) {
+      client_message.set_fwd_mids["8"] = await setFWDMids(JSON.parse(msg.set_sheet_data["Set_Forward_B/S"]), 8);
     }
   }
 
@@ -101,13 +130,12 @@ module.exports.getSecurities = function (security) {
 
   let securities = ticker_securities.map(row => row.security);
   let fx_securities_ = fx_securities.map(row => row.security);
-  let eod_securities_ = eod_securities.map(row => row.security);
 
   // removes the 6 bbsw tickers so that they can be sent on thier own message without the fut_px_val_bp field
   // FIXME: need to use ticker_id to filter the ticker rather than slicing the array method
 
   let main_tickers = securities.slice(0,2).concat(securities.slice(20, 21)); // XMA | YMA | abfs
-  let fut_tickers = securities.slice(2, 14).concat(securities.slice(21, 38)); // ir1 ir2 ir3 ir4 ir5 ir6 ir7 ir8 ir9 ir10 ir11 ir12 ib1 ib2 ib3 ib4 ib5 ib6 ib7 ib8 ib9 ib10 ib11 ib12 ib13 ib14 ib15 ib16 ib17 
+  let fut_tickers = securities.slice(2, 14).concat(securities.slice(21, 39)); // ir1 ir2 ir3 ir4 ir5 ir6 ir7 ir8 ir9 ir10 ir11 ir12 ib1 ib2 ib3 ib4 ib5 ib6 ib7 ib8 ib9 ib10 ib11 ib12 ib13 ib14 ib15 ib16 ib17 ib18 
   let bbsw_tickers = securities.slice(14, 20); // BBSW 1m 2m 3m 4m 5m 6m 
   let rbacor = securities.slice(39, 40);
   let usd_tickers = ticker_securities.filter( i => [41,42,43,44,45,46,47,48,49,50,51,52,53].includes(i.ticker_id)).map(row=>row.security);
@@ -175,14 +203,6 @@ module.exports.getSecurities = function (security) {
       get_fxsecurities: {
         securities: fx_securities_,
         fields: []
-      }
-    };
-    sendToGateway(msg);
-  } else if (security == "eod") {
-    msg = {
-      get_securities: {
-        securities: eod_securities_,
-        fields : [`PX_CLOSE_1D`]
       }
     };
     sendToGateway(msg);
@@ -273,20 +293,15 @@ module.exports.getAllQuotes = function () {
 // indexes to 'xma' and 'yma'.
 
 async function parseSecurityData (security_data) {
-  let sec, row;
+  var sec, row;
   let p = {};
-  let today = new Date().toDateString();
-  let has_updated = false;
-  let pg_result;
-  let close_values = [];
-  let security_values = [];
 
-  for(sec in security_data)  {
-    let yesterday_close = security_data[sec].px_close_1d;
-    if(yesterday_close !== null && yesterday_close !== undefined){
-      close_values.push(`('${sec}', ${yesterday_close})`);
-    }    
+  // Loop over the securities returned from the gateway.
+  for (sec in security_data) {
+    // Get the property corresponding to each security
+
     row = ticker_securities.find(row => (sec.toLowerCase() === row.security.toLowerCase()));
+
     if (!row) {
       if (security_data[sec].mid == undefined || security_data[sec].sw_cnv_risk == undefined) continue;
       let result = await query(`SELECT product_id FROM quotes WHERE security = '${sec}'`);
@@ -301,46 +316,24 @@ async function parseSecurityData (security_data) {
         let inv = 1.0 / 0.125;
         security_data[sec].mid = (Math.round(security_data[sec].mid * inv) / inv).toFixed(5);
       }
-      security_values.push(`(${security_data[sec].mid}, ${security_data[sec].sw_cnv_risk}, ${false}, ${false}, '${sec}')`);
-      } else {
-        let mid = (security_data[sec].ask + security_data[sec].bid)/2 ?? security_data[sec].last;
-        if (mid !== null && !isNaN(mid)) await query (`UPDATE tickers SET last_mid = ${mid} WHERE security = '${sec}'`);
-        p[row.property] = security_data[sec];
-      }
-    }
-
-    if(security_values.length > 0){
-      try{
-        pg_result = await query('UPDATE quotes AS q SET '
-            + 'mid = c.mid, dv01 = c.dv01, '
-            + 'mid_is_stale = c.mid_is_stale, '
-            + 'dv01_is_stale = c.dv01_is_stale '
-            + `FROM (VALUES ${security_values.join(', ')}) AS c(mid, dv01, mid_is_stale, dv01_is_stale, security) `
-            + 'WHERE c.security = q.security RETURNING *'
-          );
-        const msg = {
+      let pg_result;
+      pg_result = await query(`UPDATE quotes `+ 
+                              `SET mid = ${security_data[sec].mid}, dv01 = ${security_data[sec].sw_cnv_risk}, `+
+                              `mid_is_stale = ${false}, dv01_is_stale = ${false} `+
+                              `WHERE security = '${sec}' `+
+                              `RETURNING *`);
+      const msg = {
         set_quotes : pg_result.rows
-        };
-        sendToOneview({ update_mids: msg.set_quotes });
-        sendToAllClients(msg);
-      } catch (e){
-        console.error(e);
-      }
+      };
+      sendToOneview({ update_mids: msg.set_quotes });
+      sendToAllClients(msg);
+    } else {
+      let mid = (security_data[sec].ask + security_data[sec].bid)/2 ?? security_data[sec].last;
+      if (mid && !isNaN(mid)) await query (`UPDATE tickers SET last_mid = ${mid} WHERE security = '${sec}'`);
+      p[row.property] = security_data[sec];
     }
-    if(close_values.length > 0 && (!last_parse || last_parse != today)){
-      try {
-        pg_result = await query(`UPDATE quotes AS q SET yesterday_close = c.yesterday_close FROM (VALUES ${close_values.join(', ')}) AS c(security, yesterday_close) WHERE c.security = q.security RETURNING *`);
-        const msg = {
-          set_quotes: pg_result.rows
-        };
-        sendToAllClients(msg);
-        has_updated = true;
-      } catch (e){
-        console.error(e);
-      }    
-    }
-    last_parse = has_updated ? today : last_parse;
-    return p;
+  }
+  return p;
 }
 
 module.exports.updateCurrency = function (currency_state) {
@@ -371,19 +364,12 @@ module.exports.updateProducts = async function() {
   }
 };
 
-module.exports.desiredConnections = async function (req, res) {
-  // TODO: Update POTrade to have a front-end field to specify value, which is stored in the backend/db and can be read via an API connection
-  return res.status(200).send({
-    desired: 1
-  });
-};
-
-module.exports.currentConnections = async function (req, res) {
-  let gateways = [];
-  sessions.forEach((sess) => {if (sess.is_gateway) gateways.push(sess)});
-  gateways = gateways.map(({socket, ...rest}) => rest);
-  return res.status(200).send({
-    current: gateways.length,
-    gateways,
-  });
+module.exports.tryConnectSheet = tryConnectSheet;
+function tryConnectSheet () {
+  for (const sess of sessions.values()) {
+    if (sess.is_gateway && !sess.hasNoSheet) {
+      sendToOneClient(sess.socket, { sheet_connect: true });
+      return;
+    }
+  }
 };

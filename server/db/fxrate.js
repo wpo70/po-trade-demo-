@@ -41,6 +41,8 @@ module.exports.getFXSecurities = async function (fx_securities) {
 };
 
 module.exports.updateFXSecurities = async function (fx_securities) {
+
+  logger.info('In updateFXRates():\n %s', JSON.stringify(fx_securities));
   var fx_security;
   for (fx_security in fx_securities) {
   // Assemble the update query string

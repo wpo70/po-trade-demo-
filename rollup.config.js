@@ -11,13 +11,6 @@ import replace from '@rollup/plugin-replace';
 
 const production = !process.env.ROLLUP_WATCH;
 
-const sym = ["\\", "|", "/", "―"];
-let sp = 0;
-function loadSpin() {
-  process.stdout.write("\r" + sym[sp++]);
-  sp &= 3;
-}
-
 function serve() {
   let server;
 
@@ -101,7 +94,6 @@ export default {
     // ) {
     //   return;
     // }
-    loadSpin();
 
     // omit A11y warnings
     if (warning.code == 'PLUGIN_WARNING' && warning.message.includes("A11y")) {
@@ -116,6 +108,7 @@ export default {
     const ignored = {
       PLUGIN_WARNING: ['`package.json`'],
     };
+    console.log(svelte.arguments);
     const ignoredKeys = Object.keys(ignored);
     const ignoredValues = Object.values(ignored);
     
@@ -130,7 +123,7 @@ export default {
         return;
       }
     }
-    process.stdout.write('\r');
+
     warn(warning);
   },
   watch: {

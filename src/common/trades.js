@@ -974,6 +974,17 @@ class Trades {
     return orders;
   }
 
+  // Return true if all orders in all trade objects are confirmed
+
+  allOrdersConfirmed() {
+    let all_orders = this.getAllOrders();
+
+    for (let order of all_orders) {
+      if (!order.isConfirmed()) return false;
+    }
+
+    return true;
+  }
 }
 
 export default Trades;

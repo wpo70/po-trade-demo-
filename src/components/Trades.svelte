@@ -22,7 +22,7 @@
   // ADD TicketView modal to confirm the tickets
   import TicketView from "./TicketView.svelte";
   import currency_state from "../stores/currency_state";
-  import active_product, { main_content, view } from '../stores/active_product';
+  import active_product from "../stores/active_product";
   import { addDays, addTenorToDays, generateConfo, isBusinessDay, isTenor, roundToNearest, timestampToISODate, toTenor } from "../common/formatting";
   import trade_reviews from "../stores/trade_reviews";
   import user from "../stores/user";
@@ -36,7 +36,7 @@
   export let leftover_err_message;
   export let fromWhiteboard = false;
   export let refresh = 0;
-  export let total_ts = 0;
+
   $: active_prod = trades?.product_id ?? $active_product;
 
   $: if(openReviewModal == false) updateTradeFromTicket();
@@ -77,23 +77,32 @@
     return order;
   };
 
-  onMount(() => {
-    if(products.isStir(active_prod) || products.isFwd(active_prod)) {
-      let startDateOrder = getSTIRStartDate([trades.trades[0].offers[0], trades.trades[0].bids[0]]);
-
-      if(!startDateOrder) {
-        return;
-      }
-      if (startDateOrder.start_date) {
-        start_date = timestampToISODate(startDateOrder.start_date);
-      } else {
-        start_date = timestampToISODate(addTenorToDays(toTenor(startDateOrder.fwd), ((products.isXccy(active_prod)|| products.isNZD(active_prod) || products.isUSD(active_prod)) ? addDays(addDays(new Date(), 1, active_prod), 1, active_prod) : addDays(new Date(), 1, active_prod)),active_prod));
-      }
-      start_date_disabled = true;
-    } else if (active_prod == 20) {
-      start_date_disabled = true;
+onMount(() => {
+  if(products.isStir(active_prod) || products.isFwd(active_prod)) {
+    let startDateOrder = getSTIRStartDate([trades.trades[0].offers[0], trades.trades[0].bids[0]]);
+    if(!startDateOrder) {
+      return;
     }
-  });
+    if (startDateOrder.start_date) {
+      start_date = timestampToISODate(startDateOrder.start_date);
+    } else {
+      start_date = timestampToISODate(addTenorToDays(toTenor(startDateOrder.fwd), ((products.isXccy(active_prod)|| products.isNZD(active_prod) || products.isUSD(active_prod)) ? addDays(addDays(new Date(), 1, active_prod), 1, active_prod) : addDays(new Date(), 1, active_prod)),active_prod));
+    }
+    start_date_disabled = true;
+  } else if (active_prod == 20) {
+    start_date_disabled = true;
+  }
+});
+
+// EFP start_date - reactive to handle when trades.product_id is set after mount
+$: {
+  if ((trades?.product_id == 2 || trades?.product_id == 17) && !start_date) {
+    // EFP and EFP-SPS products - set to tomorrow
+    let tomorrow = addDays(new Date(), 1, 2);
+    start_date = timestampToISODate(tomorrow);
+    console.log('EFP start_date set to:', start_date);
+  }
+}
 
   let tickets = new Tickets();
 
@@ -143,8 +152,19 @@
   $: {
     let t = $ticker;
     // let gwConnected = $data_collection_settings.gateways.length > 0;
-    if (trades && trades.trades.every(checkTrades)) { show_submit_button = true; }
-    else  { show_submit_button = false; }
+    if (trades && trades.allOrdersConfirmed() &&
+      trades.trades.every(checkTrades)) 
+          show_submit_button = true;
+    else show_submit_button = false;
+  }
+
+  async function checkConfirmed() {
+    await new Promise(res => setTimeout(res, 10));
+    // let gwConnected = $data_collection_settings.gateways.length > 0;
+    if (trades && trades.allOrdersConfirmed() && 
+    trades.trades.every(checkTrades)) 
+        show_submit_button = true;
+    else show_submit_button = false;
   }
 
   // This function closes select orders and is used for updating orders (not creating new ones for leftover!!)
@@ -193,7 +213,7 @@
 
       
       let prod_id = trade.bids[0].product_id;
-      let twice_mmp = Math.round(2 * quotes.mmp(prod_id, trade.year, trade?.fwd));
+      let twice_mmp = Math.round(2 * quotes.mmp(prod_id, trade.year, currency_state.get_cur()));
 
       // If total offer and bid volume is within 1 mio, then we close all orders in offers and bid
       // if they are a commanding leg.
@@ -257,6 +277,7 @@
           updated_order = JSON.parse(JSON.stringify(high_side_order));
           new_vol = high_side_order.volume - trade.volume;
           updated_order.volume = new_vol;
+          updated_order.confirmed = false;
 
           // if the high_side is a commanding leg, then push the trade to be updated
           if (isCommandingLeg(high_side_order, trade.year)) {
@@ -299,6 +320,7 @@
                   // Parse the updated order with the leftovers
                   updated_order = JSON.parse(JSON.stringify(order));
                   updated_order.volume = new_vol;
+                  updated_order.confirmed = false;
                   update_orders.push(updated_order)
                 } else {
                   leftover_bool = true;                  
@@ -366,8 +388,8 @@
     for (let trade of trades.trades) {
       // Set the indicator of the given product_id and year to trade price
 
-      indicator = quotes.get(trades.product_id, trade.year, $currency_state);
-      websocket.overrideQuote(indicator, trade.price, $currency_state);
+      indicator = quotes.get(trades.product_id, trade.year, currency_state.get_cur());
+      websocket.overrideQuote(indicator, trade.price, currency_state.get_cur());
     }
   }
 
@@ -406,6 +428,28 @@
     websocket.updateBrokerages(brokerages);
   }
 
+  // Handle trades cancellation
+
+  async function handleTradesCancel() {
+    // Delete all orders in the failed trades object
+    // NOTE: this is not ideal but much simpler than handling incompatible orders
+    if (trade_review != null){
+      let id = trade_review.review_id;
+      websocket.updateTradeReview({
+        review_id: trade_review.review_id,
+        orders: trade_review.orders,
+        status: "Failed"
+      });
+      await new Promise(res => setTimeout(res, 100));
+      websocket.deleteTradeReview([id]);
+    }
+
+    let orders = trades.getAllOrders();
+    let order_ids = orders.map((el) => el.order_id);
+    websocket.deleteOrders(order_ids);
+    dispatch("cancel");
+  }
+
   async function afterSubmit () {
     // Send the tickets to Oneview
     submitOvTickets(tickets)
@@ -441,8 +485,6 @@
 
     // Insert the tickets into the trades table
     websocket.callFunctionWithCallback(websocket.insertTickets, [tickets], "insert_tickets", afterSubmit);
-    //Force back to whiteboard only when no trades left
-    if(total_ts < 2){view.set('whiteboard');}
   }
   
   let trade_review;
@@ -452,7 +494,14 @@
   let pendingApproval = false; 
   let initiatedByMe = false;
   let invalidReviewers = false;
-
+  let gotFuturesAccounts = (tickets) => {
+    if (products.isFuturesProd(active_prod)) {
+      for (let ticket of tickets.tickets) {
+        if (!ticket.offer_fut_acc || !ticket.bid_fut_acc) return false;
+      }
+    }
+    return true;
+  }
   $: {
     let t = $trade_reviews;
     if (trades) {
@@ -504,7 +553,7 @@
     trades.time_closed = timestamp;
   
     for (let trade of trades.trades) {
-      trade.currency = $currency_state;
+      trade.currency = currency_state.get_cur();
     }
 
     // Convert trades to tickets
@@ -570,7 +619,7 @@
       trades.time_closed = timestamp;
     
       for (let trade of trades.trades) {
-          trade.currency = $currency_state;
+          trade.currency = currency_state.get_cur();
       }
       // Convert trades to tickets
       tickets = new Tickets(trades, timestamp, start_date);
@@ -730,6 +779,7 @@
             bind:reviewExists
             locked={lockedLeg == trade.year || trades.trades.length == 1}
             size={trades.trades.length}
+            on:confirmed={checkConfirmed} 
             on:copyBreaks={copyBreaks} 
             on:lockLeg={handleLockLeg}
             on:yieldUpdate={handleYieldUpdate}
@@ -802,6 +852,10 @@
           <Button on:click={retractReview} size="field" kind="danger">
             Retract Review
           </Button>
+        {:else}
+          <Button on:click={handleTradesCancel} size="field" kind="danger" disabled={!traderApproved}>
+            Cancel
+          </Button>
         {/if}
 
       </ButtonSet>
@@ -821,7 +875,6 @@
     on:close={updateTradeFromTicket}
     primaryButtonText="Approve Ticket"
     secondaryButtonText="Reject Ticket"
-    preventCloseOnClickOutside
     
     on:click:button--secondary={rejectTrade}
     on:click:button--primary={approveTrade}
@@ -842,7 +895,6 @@
       on:click:button--secondary={() => (openReviewModal = false)}
       on:click:button--primary={sendReview}
       primaryButtonDisabled={invalidReviewers}
-      preventCloseOnClickOutside
     >
       <div class="ticket">
         <TicketView bind:tickets={tickets} editable={true} openTicket={openReviewModal}/>
@@ -895,9 +947,4 @@
     margin-bottom: 0;
   }
   
-  :global(.trades-container .bx--btn--primary:only-child) {
-    max-width: 100%;
-    justify-content: center;
-    padding-right: 12px;
-  }
 </style>

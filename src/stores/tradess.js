@@ -96,7 +96,7 @@ const tradess = (
         // Update the appropriate trades fields
         
         for (let trades of trades_with_order) {
-          if (key === 'firm' || key === 'broker_id') continue;
+          if (key === 'firm' || key === 'broker_id' || key === 'confirmed') continue;
 
           if (key === 'volume') {
             // Recalculate trade volumes

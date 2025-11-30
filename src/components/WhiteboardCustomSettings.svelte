@@ -4,7 +4,7 @@
   import { createEventDispatcher, tick } from "svelte";
   
   import { Button, Checkbox, Modal, Tag, TextInput, TooltipDefinition, InlineLoading } from "carbon-components-svelte";
-  import CustomComboBox from "./Utility/CustomComboBox.svelte";
+  import CustomComboBox from "./CustomComboBox.svelte";
   import WhiteboardAddTenorModal from "./WhiteboardAddTenorModal.svelte";
   import Edit from "carbon-icons-svelte/lib/Edit.svelte";
   import Send from "carbon-icons-svelte/lib/Send.svelte";
@@ -173,7 +173,7 @@
   function handleTenorAdd(e) {
     if (add_tenor.tenors.length) {
       let { years, fwd } = e.detail;
-      add_tenor.tenors = add_tenor.tenors.concat(genericToTenor({product_id: add_tenor.product_id, years, fwd}), true);
+      add_tenor.tenors = add_tenor.tenors.concat(genericToTenor({product_id: add_tenor.product_id, years, fwd}));
     }
   }
 
@@ -203,6 +203,11 @@
       return $prices[prod].map((sh, si) => sh.length || si == 0 ? {id:si, shape:si, text:shapeToStr(si)} : null).filter(f => f != null);
     }
   }
+ $:{
+  if(!open){
+    add_tenor = false;
+  }
+ } 
 </script>
 
 <Modal
@@ -218,7 +223,6 @@
     if (text === "Cancel") { open = false; }
   }}
   on:close={async () => {
-    add_tenor = null;
     await new Promise(res => setTimeout(res, 300));
     dispatch("close");
     invalid_blueprint = false;
@@ -312,9 +316,10 @@
                       <CustomComboBox
                         titleText="Product"
                         size="sm"
-                        items={$products.filter(p => p.currency_code == $currency_state).map(p => {return {id:p.product_id, text:p.product}})}
+                        items={$products.filter(p => p.currency_code == $currency_state.currency).map(p => {return {id:p.product_id, text:p.product}})}
                         bind:selectedId={block.product_id}
                         on:select={() => {block.tenors = []; block.shape = undefined;}}
+                        on:r={e => console.log(e)}
                         invalid={invalid_blueprint && (block.product_id == undefined || block.dupe)}
                         />
                     </div>
@@ -325,6 +330,7 @@
                         items={getShapeList(block.product_id||0)}
                         disabled={!block.product_id}
                         initialSelectedId={block.shape == undefined ? undefined : getShapeList(block.product_id).find(f => f.shape === block.shape)?.id}
+                        on:r={e => console.log(e)}
                         on:select={({detail:{selectedItem}}) => {block.shape = selectedItem.shape; block.tenors = []; block.nonpersists = false;}}
                         invalid={block.product_id && invalid_blueprint && (block.shape == undefined || block.dupe)}
                         />
@@ -391,7 +397,7 @@
                   </div>
                 </div>
               {/each}
-              {#if col.length < 6}
+              {#if col.length < 3}
                 <div class="block">
                   <button class="bx--btn bx--btn--sm bx--btn--ghost group_title" on:click={()=>{addBlock(col_idx)}}>
                     <h6 style="font-weight:500;">Add Block</h6>
@@ -413,7 +419,6 @@
 
 <Modal
   danger
-  id="delete_wb_modal"
   size="sm"
   bind:open={openConfDel}
   modalHeading="Delete Custom Whiteboard?"

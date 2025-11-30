@@ -1,137 +1,178 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import Ticker from './Ticker.svelte';
   import active_product from '../stores/active_product';
-  import currency_state from '../stores/currency_state.js';
 
-  let paused = true;
-  let tic, first_tic;
-  let possible_tics = 0;
-  let tic_width = 0;
-  let px_rate = 0;
-  let last_click = 0;
-  let left_scroll = 0;
+  let isTickerPaused = true;
+  let tic;
+  let expandDiv;
 
   onMount(() => {
-    tic.addEventListener('mousewheel', (e) => {
-      if (document.body.offsetHeight - document.body.scrollHeight == 0) {
-        scrollBar(Math.sign(e.wheelDelta)*-1, true);
+    window.addEventListener('scroll', () => {
+      if (window.scrollX > 0) {
+        requestAnimationFrame(expanding); // call parallaxing()
       }
     }, false);
+    tickerBarHandle();
   });
 
-  $: createTickers($currency_state);
+  function tickerBarHandle() {
+    // Move position scroll to left 0
+    refreshScrollBar($active_product);
 
-  $: resetScroll($active_product, $currency_state);
-
-  async function createTickers() {
-    await tick();
-    tic_width = first_tic.getBoundingClientRect().width;
-    possible_tics = Math.ceil(tic.getBoundingClientRect().width / tic_width);
-    px_rate = Math.round(tic_width / 60);
-  }
-
-  function handleClick(e) {
-    if (e.type == "click" && !paused) {
-      resetScroll();  
-      paused = true;
-      last_click = Date.now();
-    } else if (e.type == "dblclick" && paused && Date.now() - last_click > 500) {
-      resetScroll();
-      paused = false;
+    if (!tic.classList.contains("hmove")) {
+      tic.classList.add("hmove");
+      isTickerPaused = false;
+    } else {
+      tic.classList.remove("hmove");
+      if (expandDiv) { expandDiv.style.width = "100%"; }
+      isTickerPaused = true;
     }
   }
-
-  async function resetScroll () {
-    await tick();
-    return tic.scrollLeft = 0, left_scroll = 0;
+  
+  // FIXME: Scroll does not parallax correctly. Width is only ever set to 200%. Overflow is not hidden so forces the entire page to be scrollable and blank space to be unnecessarily visible
+  function expanding() {
+    const speed = 5;
+    const scrolltop = window.pageXOffset; // get number of pixels document has scrolled horizontally
+    const scrollAndSpeed = (scrolltop / speed);
+    if (expandDiv && !isTickerPaused) {expandDiv.style.width = Math.min(Math.max(scrollAndSpeed, (innerWidth/scrolltop)*100), 200) + "%";}
   }
 
-  function scrollBar(direction, smooth = true) {
-    if (possible_tics > 1) { return; }
-    const delta = 214*direction;
-    left_scroll = Math.min(Math.max(0, left_scroll + delta), tic.scrollWidth - tic.offsetWidth);
-    tic.scrollTo({
-      left: left_scroll,
-      behavior: smooth ? 'smooth' : 'instant' 
+// Button prev/next for ticker bar 
+function scrollHandle(action) {
+  if (action == "prev") {
+    document.getElementsByClassName('tickerBar_w')[0].scrollBy({
+      top: 0,
+      left: -200,
+      behavior: 'smooth'
+    });
+  } else if (action == "next") {
+    document.getElementsByClassName('tickerBar_w')[0].scrollBy({
+      top: 0,
+      left: +200,
+      behavior: 'smooth'
     });
   }
+}
+
+// Mouse Scroll when hover on the ticker bar
+onMount(() => {
+  let tickerBar_w = document.getElementsByClassName('tickerBar_w')[0];
+  tickerBar_w.addEventListener('mousewheel', (e) => {
+      if (document.body.offsetHeight - document.body.scrollHeight == 0) {
+        tickerBar_w.scrollLeft -= (Math.max(-1, Math.min(1, (e.wheelDelta))) * 70);
+      }
+    }, false);
+});
+
+function refreshScrollBar (p) {
+  let FuturesTickerBar_width =  document.getElementsByClassName('tickerBar_w');
+  if (FuturesTickerBar_width.length !== 0) FuturesTickerBar_width[0].scrollLeft = 0;
+}
+$: refreshScrollBar($active_product);
 </script>
-
-
-<div id="ticker_bar">
-  <div class="buttons" on:click|stopPropagation>
-    <span class:disabled={possible_tics>1} on:click={()=>{scrollBar(-1)}}>❮</span>
-    <span class:disabled={possible_tics>1} on:click={()=>{scrollBar(1)}}>❯</span>
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-missing-attribute -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+<div id="hwrap_" class="hwrap" on:click={tickerBarHandle} style="width: 100%" bind:this={expandDiv}>
+  <div class="button_hwrap" on:click|stopPropagation>
+    <a class="prev" on:click={()=>{scrollHandle("prev")}}>❮</a>
+    <p class="refresh" on:click={refreshScrollBar}></p>
+    <a class="next"on:click={()=>{scrollHandle("next")}}>❯</a>
   </div>
-  <div
-    bind:this={tic}
-    id="tickers"
-    class:ticker_scroll={!paused} 
-    style="--px_rate:{px_rate}s; --tic_width:{tic_width}px"
-    on:dblclick={handleClick}
-    on:click={handleClick}
-    >
-    <Ticker bind:ref={first_tic}/>
-    {#if !paused}
-      {#each Array(possible_tics) as _}
-        <Ticker/>
-      {/each}
+
+  <div id="tickerBar" class="tickerBar_w hmove" bind:this={tic}>
+    {#if isTickerPaused }
+      <div class="hitem"> <Ticker /></div>
+      <div class="hitem"> <Ticker /></div>
+      <div class="hitem"> <Ticker /></div>
+      <div class="hitem"> <Ticker /></div>
+    {:else}
+      <div class="hitem"> <Ticker /></div>
+      <div class="hitem"> <Ticker /></div>
+      <div class="hitem"> <Ticker /></div>
+      <div class="hitem"> <Ticker /></div>
     {/if}
   </div>
+
 </div>
 
-
 <style>
-  #ticker_bar {
-    margin: 5px 0px 7px;
-    background-color: var(--cds-ui-01);
-    display: inline-flex;
-    align-items: center;
-    user-select: none; 
-    width: 100%;
-  }
-
-  .buttons{
-    height: 70px;
-    z-index: 1;
-    background-color: var(--cds-button-separator);
-    border-width: 1px 13px;
-    border-color: var(--cds-ui-01);
-    border-style: solid;
-    padding: 7px 10px;
+  #tickerBar{
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-  .buttons > span {
-    color: var(--cds-button-tertiary);
-    font-weight: bold;
-    font-size: 20px;
-    &.disabled {
-      opacity: 0.7;
-    }
-    &:not(.disabled):hover  {
-      cursor: pointer;
-      color: var(--cds-link-01, #78a9ff);
-    }
-  }
-
-  #tickers{
-    display: flex;
+    flex-direction: row;
+    gap:10px;
     width: 100%;
     overflow-x: hidden;
   }
-
-  .ticker_scroll {
-    overflow-x: visible !important;
-    animation: ticker_anim linear infinite;
-    animation-duration: var(--px_rate);
+  .hwrap {
+    top: 48;
+    left:0;
+    right:0;
+    margin-top: 5px;
+    margin-bottom: 7px;
+    background-color: var(--cds-ui-01);
+    white-space: nowrap;
+    width: 100%;
+    display:inline-flex;
+    flex-direction: row;
   }
-
-  @keyframes ticker_anim {
-    0% { transform: translateX(0); } 
-    100% { transform: translateX(calc(var(--tic_width)*-1 - 14px)); }
+  .hmove {   
+    display: flex;
+    }
+  .hitem {
+    flex-shrink: 0;
+    box-sizing: border-box;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    text-align: center;
   }
+  @keyframes tickerh {
+    0% { transform: translate3d(100%, 0, 0); }
+    100% { transform: translate3d(-100%, 0, 0); }
+  }
+  .hmove { animation: tickerh linear 60s infinite;}
+  .hmove:hover { animation-play-state: paused;}
+  /* Next & previous buttons */
+.prev,
+.next {
+  cursor: pointer;
+  width: auto;
+  color: white;
+  opacity: 0.8;
+  font-weight: bold;
+  font-size: 20px;
+  border-radius: 0 3px 3px 0;
+  user-select: none;
+  -webkit-user-select: none;
+  background-color: rgba(0, 0, 0, 0.8);
+}
+.button_hwrap{
+  background-color: rgba(0, 0, 0, 0.8);
+  position: relative;
+  right:0;
+  display: flex;
+  flex-direction: column;
+  top: 0px;
+  padding: 5px 10px;
+  gap:5px;
+  margin: 9px 10px 9px 10px;
+  justify-content: space-between;
+}
+
+/* On hover, add a black background color with an effect of see-through */
+.prev:hover,
+.next:hover,
+.refresh:hover {
+  background-color: #393939;
+  opacity: 1;
+  color: var(--cds-link-01, #78a9ff);
+}
+.refresh{
+  background-color:white; 
+  opacity: 0.8; 
+  height: 5px;
+}
 </style>
 

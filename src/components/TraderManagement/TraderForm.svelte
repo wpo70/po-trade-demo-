@@ -4,6 +4,7 @@ import {
   TextInput,
   Button,
   ComboBox,
+  Modal
 } from "carbon-components-svelte";
 
 import Validator from "./../../common/validator";
@@ -11,7 +12,6 @@ import banks from "./../../stores/banks";
 import websocket from "./../../common/websocket";
 import traders from "./../../stores/traders";
 import bank_divisions from "./../../stores/bank_divisions";
-import DraggableModal from "../Utility/DraggableModal.svelte";
 
 export let trader = undefined;
 export let open;
@@ -195,16 +195,12 @@ function shouldFilterItem(item, value) {
 
 </script>
 
-<div class="trade_form">
-  <DraggableModal
-  on:close={() => copyTraderToForm(undefined)} 
-  bind:open 
-  heading="Trader Form">
-  <svelte:fragment slot="body">
-    <Form on:submit={handleSubmit}>
-      <div class="grid" on:keypress|stopPropagation>
-        <div class="md-grid-item">
-          <ComboBox
+
+<Modal on:close={() => copyTraderToForm(undefined)} preventCloseOnClickOutside passiveModal bind:open modalHeading="Trader Form">
+  <Form on:submit={handleSubmit}>
+    <div class="grid" on:keypress|stopPropagation>
+      <div class="md-grid-item">
+        <ComboBox
           titleText="Bank"
           items={
             $banks.map(bank => {
@@ -219,7 +215,7 @@ function shouldFilterItem(item, value) {
           invalid={bankInvalid}
           invalidText='Bank must be selected'
           {shouldFilterItem}
-          />
+        />
         </div>
         <div class="md-grid-item">
           <ComboBox
@@ -260,7 +256,7 @@ function shouldFilterItem(item, value) {
       </div>
       <div class="sm-grid-item" on:keypress|stopPropagation>
         <TextInput
-        bind:value={fields.preferredname.str}
+          bind:value={fields.preferredname.str}
           bind:dirty={fields.preferredname.dirty}
           bind:invalid={fields.preferredname.invalid}
           labelText="Preferred Name"
@@ -289,10 +285,10 @@ function shouldFilterItem(item, value) {
           bind:invalid={fields.ov_trader_id.invalid}
           labelText="Oneview Trader Id"
           invalidText={fields.ov_trader_id.error_message}
-          />
-        </div>
-        <div class="md-grid-item" on:keypress|stopPropagation>
-          <TextInput
+        />
+      </div>
+      <div class="md-grid-item" on:keypress|stopPropagation>
+        <TextInput
           bind:value={fields.bbg_id.str}
           bind:dirty={fields.bbg_id.dirty}
           bind:invalid={fields.bbg_id.invalid}
@@ -301,18 +297,16 @@ function shouldFilterItem(item, value) {
         />
       </div>
 
-      </div>
-      <Button type="submit" kind={'primary'}>
-        {fields.trader_id === 0 ? 'Add trader' : 'Update trader'}
-      </Button>
-    </Form>
-  </svelte:fragment>
-</DraggableModal> 
-</div>
+    </div>
+    <Button type="submit" kind={'primary'}>
+      {fields.trader_id === 0 ? 'Add trader' : 'Update trader'}
+    </Button>
+  </Form>
+</Modal>
 
 <style>
-  
-  .grid {
+
+.grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   grid-gap: 2rem;
@@ -330,10 +324,6 @@ function shouldFilterItem(item, value) {
 
 .md-grid-item {
   grid-column: span 3;
-}
-
-:global(.trade_form .bx--modal-container){
-  width: 1000px;
 }
 
 </style>

@@ -1,6 +1,6 @@
 'use strict';
 
-import { get, writable } from "svelte/store";
+import { writable } from "svelte/store";
 import prices from "./prices";
 import { refreshData } from "../common/pricing_models";
 
@@ -8,7 +8,6 @@ const data_collection_settings = (function () {
   const { subscribe, update } = writable({
     calcIRS: true,
     calcOIS: true,
-    interpChoice: true,
     gateways: [],
   });
 
@@ -30,14 +29,6 @@ const data_collection_settings = (function () {
     prices.recalculateMids([3,20]);
   };
 
-  const setStraightInterp = function (bool) {
-    update(store => {
-      store.interpChoice = bool;
-      return store;
-    })
-    refreshData();
-  }
-  
   const setGateways = function (list) {
     update(store => {
       store.gateways = list;
@@ -82,20 +73,14 @@ const data_collection_settings = (function () {
     });
   };
 
-  const activeGatewayCount = function () {
-    return get(data_collection_settings).gateways.filter(gw => gw.blp_connected).length;
-  };
-
   return {
     subscribe,
     setCalcIRS,
     setCalcOIS,
-    setStraightInterp,
     setGateways,
     addGateway,
     removeGateway,
     updateGateway,
-    activeGatewayCount,
   };
 } ());
 
