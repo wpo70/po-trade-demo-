@@ -72,7 +72,7 @@ const websocket = {
 
         return new Promise(function (resolve, reject) {
           const loc = window.location;
-          var ws = new WebSocket(`ws://` + loc.host + loc.pathname);
+          var ws = new WebSocket((loc.protocol === 'https:' ? 'wss://' : 'ws://') + loc.host + loc.pathname);
           websocket.socket = ws;
 
           // Set up handlers for the web socket.  When the connection opens the
