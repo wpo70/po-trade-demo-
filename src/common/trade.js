@@ -66,8 +66,12 @@ class Trade {
 
         // Set bank division to first division in list
         let defaultDiv;
-        if (trader.bank_div_id != null) defaultDiv = bank_divisions.get(trader.bank_div_id)?.bank_division_id;
-        else defaultDiv = bank_divisions.getBankDivisions(trader.bank_id)[0].bank_division_id;
+        if (trader?.bank_div_id != null) {
+          defaultDiv = bank_divisions.get(trader.bank_div_id)?.bank_division_id;
+        } else {
+          const divs = bank_divisions.getBankDivisions(trader?.bank_id);
+          defaultDiv = divs?.[0]?.bank_division_id;
+        }
 
         this.bank_divisions.push({
           order_id: order.order_id,
@@ -80,8 +84,12 @@ class Trade {
 
         // Set bank division to first division in list
         let defaultDiv;
-        if (trader.bank_div_id != null) defaultDiv = bank_divisions.get(trader.bank_div_id)?.bank_division_id;
-        else defaultDiv = bank_divisions.getBankDivisions(trader.bank_id)[0].bank_division_id;
+        if (trader?.bank_div_id != null) {
+          defaultDiv = bank_divisions.get(trader.bank_div_id)?.bank_division_id;
+        } else {
+          const divs = bank_divisions.getBankDivisions(trader?.bank_id);
+          defaultDiv = divs?.[0]?.bank_division_id;
+        }
 
         this.bank_divisions.push({
           order_id: order.order_id,

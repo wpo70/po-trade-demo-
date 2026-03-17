@@ -281,6 +281,7 @@ $: showCompleteOrderTable ? pageSize = 15 : pageSize = 3;
       <ToolbarMenu>
       <!-- FIXME: not sure what functionality of this button:  -->
       </ToolbarMenu>
+      <Button kind="secondary" size="small" on:click={() => { rowIds = active_orders.map(o => o.order_id); }}>Select All</Button>
       <Button icon={DocumentExport} disabled={permission["View Only"]} on:click={() => exportLedgerToCSV() }>Export</Button>
     </ToolbarContent>
   </Toolbar>

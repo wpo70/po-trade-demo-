@@ -1,385 +1,289 @@
 <script>
-import { onMount } from 'svelte';
+  import { onMount } from 'svelte';
+  import websocket from '../common/websocket.js';
+  import Validator from '../common/validator.js';
+  import currency_state from '../stores/currency_state.js';
 
-import { 
-  Header,
-  Tile,
-  Form,
-  FormGroup,
-  TextInput,
-  PasswordInput,
-  Button,
-  ButtonSet,
-  ComposedModal,
-  ModalBody,
-  ModalHeader,
-  ModalFooter,
-  Checkbox,
-  ToastNotification,
-  Loading
-} from 'carbon-components-svelte';
-import User from 'carbon-icons-svelte/lib/User.svelte';
+  const AUTH_API = 'https://rateedge-auth.azurewebsites.net/api/auth';
 
-import Validator from '../common/validator.js';
-import websocket from '../common/websocket.js';
-import config from "../../config.json";
-import currency_state from '../stores/currency_state.js';
+  let authStep = 'email';
+  let emailVerified = false;
+  let verifiedEmail = '';
+  let error_message = '';
+  let success_message = '';
+  let loading = false;
+  let authEmail = '';
+  let otpCode = '';
 
-// Show failed login messages from the server.
+  let username = new Validator();
+  let password = new Validator();
 
-let error_message = '';
-let forgot_pass_error_message = '';
-let loading = false;
+  let input_email;
+  let input_otp;
+  let input_username;
 
-// Open Modal for Forgot Password.
-let open = false;
-
-// Put the focus on username when showing the login form.
-
-let input_username;
-onMount(() => {
-  input_username.focus();
-});
-
-// These are the form fields for placing an order.
-
-let username = new Validator();
-let password = new Validator();
-let email = new Validator();
-
-// Toast notification
-let notification = null;
-let shouldShowToast = false;
-
-function resetNotification() {
-  notification = null;
-}
-
-// Reactively assess the validity of the data as it is being entered.
-// The invalid field must appear on the left side of the assignment
-// for Svelte to recognise it has changed.
-
-$: username.invalid = username.isInvalid(Validator.scanRequiredText);
-$: password.invalid = password.isInvalid(Validator.scanRequiredText);
-$: email.invalid = email.isInvalid(Validator.scanEmail);
-
-function handleForgetPassword(){
-  email.dirty = true;
-  email.invalid = email.isInvalid(Validator.scanEmail);
-  
-  if (email.invalid) return;
-  
-  websocket
-  .submitForgotPassword({
-    userEmail: email.value,
-  })
-  .catch((err) => {
-    forgot_pass_error_message = err.message; // No error is being caught
+  onMount(() => {
+    const stored = sessionStorage.getItem('rateedge_email_verified');
+    if (stored) {
+      emailVerified = true;
+      verifiedEmail = stored;
+      authStep = 'login';
+      setTimeout(() => input_username?.focus(), 100);
+    } else {
+      setTimeout(() => input_email?.focus(), 100);
+    }
   });
-  open = true;
-  shouldShowToast = true;
-  open = false;
-  notification = {
-    kind: 'success',
-    title: 'Forgot Password',
-    message: 'If this account exist, you will receive an email at: ' + email.value
+
+  async function handleRequestOTP() {
+    error_message = '';
+    success_message = '';
+    
+    if (!authEmail || !authEmail.includes('@')) {
+      error_message = 'Please enter a valid email address';
+      return;
+    }
+    
+    loading = true;
+    
+    try {
+      const response = await fetch(`${AUTH_API}/request-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, site: 'oms' })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        authStep = 'otp';
+        success_message = 'Verification code sent to your email';
+        setTimeout(() => input_otp?.focus(), 100);
+      } else if (data.error === 'access_pending') {
+        error_message = 'Access request submitted. You will receive an email once approved (within 12 hours).';
+      } else {
+        error_message = data.message || 'Failed to send verification code';
+      }
+    } catch (err) {
+      error_message = 'Network error. Please try again.';
+    }
+    
+    loading = false;
   }
-  email.reset();
-}
 
-function handleSubmit() {
-  error_message = "";
-
-  // If any of the data has not been edited it will be clean only because it is not dirty.
-  // Apply the checks without checking they are dirty as well.  Doing so also creates the
-  // values from the strings.  Submitting implicitly make all fields dirty.
-
-  username.dirty = true;
-  password.dirty = true;
-  username.invalid = username.isInvalid(Validator.scanRequiredText);
-  password.invalid = password.isInvalid(Validator.scanRequiredText);
-
-  // If any of the data is invalid, ignore the submit event.
-
-  if (username.invalid || password.invalid) return;
-
-  // User AJAX to login.  The submitLogin function will handle the response.  If an error occurs handle it here.
-
-  loading = true;
-  websocket
-    .submitLogin({
-      username: username.value,
-      password: password.value,
-    })
-    .catch((err) => {
-      error_message = err.message;
-      loading = false;
-    });
-  loadTimeout();
-}
-
-async function loadTimeout() {
-  await new Promise(res => setTimeout(res, 10000));
-  if (loading && document.querySelector("#login")) {
-    error_message = "Log in is still being attempted but is taking longer than expected.\nPerhaps check your network connection and refresh the page to try again."
+  async function handleVerifyOTP() {
+    error_message = '';
+    success_message = '';
+    
+    if (!otpCode || otpCode.length !== 6) {
+      error_message = 'Please enter the 6-digit code';
+      return;
+    }
+    
+    loading = true;
+    
+    try {
+      const response = await fetch(`${AUTH_API}/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, site: 'oms', code: otpCode })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        emailVerified = true;
+        verifiedEmail = authEmail;
+        sessionStorage.setItem('rateedge_email_verified', authEmail);
+        authStep = 'login';
+        success_message = 'Email verified successfully';
+        setTimeout(() => input_username?.focus(), 100);
+      } else {
+        error_message = data.message || 'Invalid or expired code';
+      }
+    } catch (err) {
+      error_message = 'Network error. Please try again.';
+    }
+    
+    loading = false;
   }
-}
+
+  function handleBackToEmail() {
+    authStep = 'email';
+    otpCode = '';
+    error_message = '';
+    success_message = '';
+    setTimeout(() => input_email?.focus(), 100);
+  }
+
+  function handleSubmit() {
+    error_message = '';
+    success_message = '';
+    
+    username.dirty = true;
+    password.dirty = true;
+    
+    if (!username.str || !password.str) {
+      error_message = 'Username and password required';
+      return;
+    }
+
+    loading = true;
+    websocket
+      .submitLogin({
+        username: username.str,
+        password: password.str,
+      })
+      .catch((err) => {
+        error_message = err.message;
+        loading = false;
+      });
+    
+    currency_state._set("AUD", false);
+  }
+
+  function handleAdminLogin() {
+    authStep = 'login';
+    emailVerified = true;
+    verifiedEmail = 'admin';
+  }
+
+  // Inline styles
+  const pageStyle = "font-family: 'Inter', system-ui, -apple-system, sans-serif; background: #020617; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0; position: fixed; top: 0; left: 0; right: 0; bottom: 0; z-index: 9999;";
+  
+  const boxStyle = "background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border: 1px solid rgba(55, 65, 81, 0.5); border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 400px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);";
+  
+  const logoStyle = "text-align: center; margin-bottom: 1.5rem;";
+  
+  const titleStyle = "color: #f9fafb; font-size: 1.25rem; font-weight: 600; text-align: center; margin-bottom: 0.5rem; margin-top: 0;";
+  
+  const subtitleStyle = "color: #9ca3af; font-size: 0.875rem; text-align: center; margin-bottom: 2rem;";
+  
+  const subtitleVerifiedStyle = "color: #86efac; font-size: 0.875rem; text-align: center; margin-bottom: 2rem;";
+  
+  const inputStyle = "width: 100%; padding: 0.875rem 1rem; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(55, 65, 81, 0.8); border-radius: 8px; color: #f9fafb; font-size: 1rem; margin-bottom: 1rem; outline: none; box-sizing: border-box;";
+  
+  const otpInputStyle = "width: 100%; padding: 0.875rem 1rem; background: rgba(15, 23, 42, 0.8); border: 1px solid rgba(55, 65, 81, 0.8); border-radius: 8px; color: #f9fafb; font-size: 1.5rem; margin-bottom: 1rem; outline: none; box-sizing: border-box; text-align: center; letter-spacing: 0.5rem;";
+  
+  const btnStyle = "width: 100%; padding: 0.875rem 1rem; background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); border: none; border-radius: 8px; color: white; font-size: 1rem; font-weight: 600; cursor: pointer;";
+  
+  const hintStyle = "color: #6b7280; font-size: 0.75rem; margin-top: -0.5rem; margin-bottom: 1rem;";
+  
+  const errorStyle = "background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); border-radius: 8px; padding: 0.75rem 1rem; color: #fca5a5; font-size: 0.875rem; margin-bottom: 1rem;";
+  
+  const successStyle = "background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 0.75rem 1rem; color: #86efac; font-size: 0.875rem; margin-bottom: 1rem;";
+  
+  const footerStyle = "text-align: center; margin-top: 1.5rem;";
+  
+  const linkStyle = "color: #9ca3af; text-decoration: none; font-size: 0.875rem; cursor: pointer; background: none; border: none;";
 </script>
-  <!-- FORGOT PASSWORD MODAL -->
-  <ComposedModal
-    bind:open
-    preventCloseOnClickOutside
-    on:submit={handleForgetPassword}>
-    <ModalHeader title="Forgot Password"/>
-
-    <ModalBody>
-      <!-- Unused Error Message -->
-      {#if forgot_pass_error_message !== ''}
-      <div class="login-error">
-        {forgot_pass_error_message}
-      </div>
-      {/if}
-      <!-- -------------------- -->
-      <div style="margin: 10px;">
-        <TextInput
-          bind:value={email.str}
-          bind:dirty={email.dirty}
-          bind:invalid={email.invalid}
-          labelText="Email"
-          invalidText="Invalid Email"
-          required
-        />
-      </div>
-    </ModalBody>
-
-    <ModalFooter primaryButtonDisabled={email.value === ''} primaryButtonText="Confirm"/>
-  </ComposedModal>
-
 
 <svelte:head>
-  <title>Rate Edge OMS</title>
+  <title>Sign In - RateEdge OMS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </svelte:head>
 
-<Header>
-  <div style="display:flex; align-items:center; margin-left:10px; gap:12px;">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 50" width="140" height="35">
-      <defs>
-        <linearGradient id="hdr-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" style="stop-color:#475569"/>
-          <stop offset="100%" style="stop-color:#cbd5e1"/>
-        </linearGradient>
-      </defs>
-      <g transform="translate(5, 8)">
-        <path d="M 3 28 Q 12 25, 20 16 Q 28 8, 35 4" 
-              fill="none" stroke="url(#hdr-grad)" stroke-width="2.5" stroke-linecap="round"/>
-        <circle cx="35" cy="4" r="3.5" fill="#ef4444"/>
-        <line x1="3" y1="35" x2="35" y2="35" stroke="#475569" stroke-width="2"/>
-      </g>
-      <text x="50" y="32" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
-            font-size="26" font-weight="600" letter-spacing="0.5">
-        <tspan fill="#f1f5f9">Rate</tspan><tspan fill="#ef4444">Edge</tspan>
-      </text>
-    </svg>
-    <code class="env-badge">DEMO</code>
-  </div>
-</Header>
+<div style={pageStyle}>
+  <div style={boxStyle}>
+    <div style={logoStyle}>
+      <svg viewBox="0 0 200 60" fill="none" xmlns="http://www.w3.org/2000/svg" style="height: 60px; width: auto;">
+        <path d="M30 10 L50 30 L30 50 L10 30 Z" fill="#dc2626"/>
+        <path d="M30 18 L42 30 L30 42 L18 30 Z" fill="#0f172a"/>
+        <text x="60" y="38" font-family="Inter, sans-serif" font-size="24" font-weight="700" fill="#f9fafb">RateEdge</text>
+      </svg>
+    </div>
 
-<div id="login_wrapper">
-  <div id="login_layout">
-      <div id="login_container">
-        <!-- Left column - Logo -->
-        <div id="login_logo">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 120" width="280" height="105">
-            <defs>
-              <linearGradient id="curve-grad-dark" x1="0%" y1="100%" x2="100%" y2="0%">
-                <stop offset="0%" style="stop-color:#475569"/>
-                <stop offset="100%" style="stop-color:#cbd5e1"/>
-              </linearGradient>
-            </defs>
-            <g transform="translate(95, 12)">
-              <path d="M 0 32 Q 35 28, 58 15 Q 80 2, 102 -5" 
-                    fill="none" stroke="url(#curve-grad-dark)" stroke-width="3" stroke-linecap="round"/>
-              <circle cx="102" cy="-5" r="5" fill="#ef4444"/>
-            </g>
-            <text x="160" y="72" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif" 
-                  font-size="40" font-weight="600" text-anchor="middle" letter-spacing="0.5">
-              <tspan fill="#f1f5f9">Rate</tspan><tspan fill="#ef4444">Edge</tspan>
-            </text>
-            <line x1="52" y1="88" x2="268" y2="88" stroke="#475569" stroke-width="2.5"/>
-          </svg>
-          <div class="tagline">Order Management System</div>
-        </div>
-
-        <div class="divider"></div>
-
-        <!-- Right column - Login Form -->
-        <div id="login">
-          <Tile>
-            <div class="login-header">
-              <User 
-                style="margin-top:3px; color: #999; "
-                size={20}
-              />
-              <h4 style="padding-bottom:5px; color: #999; font-weight: bold;">&nbsp; Login</h4>
-            </div>
-
-            <Form on:submit={(e) => {
-                e.preventDefault();
-                handleSubmit();
-                // Needed to set AUD default whenever login back
-                currency_state._set("AUD", false);
-              }}
-            >
-              <FormGroup>
-                <TextInput
-                  bind:ref={input_username}
-                  bind:value={username.str}
-                  bind:dirty={username.dirty}
-                  bind:invalid={username.invalid}
-                  labelText="Username"
-                  invalidText="Required"
-                />
-                <PasswordInput
-                  bind:value={password.str}
-                  bind:dirty={password.dirty}
-                  bind:invalid={password.invalid}
-                  labelText="Password"
-                  invalidText="Required"
-                />
-              </FormGroup>
-              
-              <div class="login-error">
-                {error_message}
-              </div>
-
-              <ButtonSet stacked>
-                <Button type="submit" style="cursor:pointer">
-                  Login
-                  {#if loading}
-                    <Loading small withOverlay={true} style="position:absolute; padding-right:1rem; justify-content:end"/>
-                  {/if}
-                </Button>
-                {#if error_message !== ''}
-                <Button kind="ghost" size="small" on:click={() => open = true}>Forgot Password?</Button>
-                {/if}
-              </ButtonSet>
-            </Form>
-          </Tile>
-        </div>
+    {#if authStep === 'email'}
+      <h1 style={titleStyle}>Order Management System</h1>
+      <p style={subtitleStyle}>Sign in with your email</p>
+      
+      {#if error_message}
+        <div style={errorStyle}>{error_message}</div>
+      {/if}
+      {#if success_message}
+        <div style={successStyle}>{success_message}</div>
+      {/if}
+      
+      <form on:submit|preventDefault={handleRequestOTP}>
+        <input 
+          bind:this={input_email}
+          bind:value={authEmail}
+          type="email" 
+          style={inputStyle}
+          placeholder="Enter your email" 
+          required
+        >
+        <p style={hintStyle}>We'll send you a verification code</p>
+        <button type="submit" style={btnStyle} disabled={loading}>
+          {loading ? 'Sending...' : 'Send Code'}
+        </button>
+      </form>
+      
+      <div style={footerStyle}>
+        <button style={linkStyle} on:click={handleAdminLogin}>Admin login</button>
       </div>
-      <!-- End of Login Container -->
-      <div id="login_endNote">COPYRIGHT 2025 @ RATE EDGE PTY LTD. ALL RIGHTS RESERVED.</div>
+
+    {:else if authStep === 'otp'}
+      <h1 style={titleStyle}>Enter Verification Code</h1>
+      <p style={subtitleStyle}>Code sent to {authEmail}</p>
+      
+      {#if error_message}
+        <div style={errorStyle}>{error_message}</div>
+      {/if}
+      {#if success_message}
+        <div style={successStyle}>{success_message}</div>
+      {/if}
+      
+      <form on:submit|preventDefault={handleVerifyOTP}>
+        <input 
+          bind:this={input_otp}
+          bind:value={otpCode}
+          type="text" 
+          style={otpInputStyle}
+          placeholder="000000" 
+          maxlength="6"
+          required
+        >
+        <button type="submit" style={btnStyle} disabled={loading}>
+          {loading ? 'Verifying...' : 'Verify Code'}
+        </button>
+      </form>
+      
+      <div style={footerStyle}>
+        <button style={linkStyle} on:click={handleBackToEmail}>← Different email</button>
+      </div>
+
+    {:else}
+      <h1 style={titleStyle}>Login</h1>
+      <p style={subtitleVerifiedStyle}>✓ {verifiedEmail}</p>
+      
+      {#if error_message}
+        <div style={errorStyle}>{error_message}</div>
+      {/if}
+      
+      <form on:submit|preventDefault={handleSubmit}>
+        <input 
+          bind:this={input_username}
+          bind:value={username.str}
+          type="text" 
+          style={inputStyle}
+          placeholder="Username" 
+          required
+        >
+        <input 
+          bind:value={password.str}
+          type="password" 
+          style={inputStyle}
+          placeholder="Password" 
+          required
+        >
+        <button type="submit" style={btnStyle} disabled={loading}>
+          {loading ? 'Logging in...' : 'Login'}
+        </button>
+      </form>
+      
+      <div style={footerStyle}>
+        <button style={linkStyle} on:click={handleBackToEmail}>← Different email</button>
+      </div>
+    {/if}
   </div>
 </div>
-<div class="notification"
-style="position: fixed; bottom: 30px;">
-{#if notification !== null && shouldShowToast}
-  <ToastNotification
-    kind={notification.kind}
-    title={notification.title}
-    subtitle={notification.message}
-    caption={new Date().toLocaleString()}
-    timeout=20000
-    on:close={resetNotification}
-  />
-{/if}
-</div>
-
-
-<style>
-
-#login {
-  width: 220px;
-  align-self: stretch;
-}
-:global(#login .bx--text-input-wrapper) { margin-top: 0.5rem; } 
-:global(#login .bx--password-input-wrapper) { margin-top: 0.75rem; }
-
-#login_logo {
-  width: 300px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.tagline {
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: 1px;
-  margin-top: 8px;
-}
-
-.divider {
-  width: 1px;
-  height: 180px;
-  background: linear-gradient(180deg, transparent 0%, #525252 20%, #525252 80%, transparent 100%);
-  margin: 0 30px;
-}
-
-#login_container{
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  width:100%;
-  padding: 30px;
-}
-#login_endNote{
-  width: 100%;
-  height: 50px;
-  padding: 20px;
-  align-items: center;
-  text-align: center;
-  font-weight: 400;
-  font-size: 11px;
-  color: #666;
-  letter-spacing: 0.5px;
-}
-#login_layout {
-  display: flex;
-  flex-direction: column;
-  background-color: #262626;
-  width: 680px;
-  min-height: 320px;
-  justify-content: center;
-  align-items: center;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  border-radius: 4px;
-}
-#login_wrapper {
-  position: fixed;
-  width: 100vw;
-  height: 100vh;
-  align-items: center;
-  justify-content: center;
-  top:0;
-  left: 0;
-  display: flex;
-}
-.login-header {
-  display: flex;
-}
-.login-error {
-  color: #da1e28;
-  margin-top: -1.5rem;
-  min-height: 1em;
-  &:not(:empty) {
-    padding: 0.5rem 0 1.2rem;
-  }
-}
-.notification {
-  position: relative;
-  z-index: 100;
-}
-.env-badge {
-  font-size: 10px;
-  font-weight: 600;
-  background: #1e3a5f;
-  color: #94a3b8;
-  padding: 3px 8px;
-  border-radius: 3px;
-  letter-spacing: 1px;
-}
-</style>

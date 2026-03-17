@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset='utf-8'>
+	<meta name='viewport' content='width=device-width,initial-scale=1'>
+	<title>Rate Edge OMS</title>
+	<!-- Fonts and CSS -->
+	<link rel='icon' type='image/svg+xml' href='/RateEdge-Favicon.svg'>
+	<link rel='stylesheet' href='/global.css'>
+	<link rel='stylesheet' href='/build/bundle.css'>
+	<script src="https://rateedge-auth.azurewebsites.net/login-widget.js"></script>
+</head>
+<body>
+	<script>
+		if (window.RateEdgeAuth) {
+			RateEdgeAuth.init('oms').then(function(authenticated) {
+				if (authenticated) {
+					// Load the app only after auth
+					var script = document.createElement('script');
+					script.src = '/build/bundle.js';
+					document.body.appendChild(script);
+				}
+			});
+		}
+	</script>
+</body>
+</html>

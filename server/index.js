@@ -40,6 +40,13 @@ const { generateEODReport } = require('./db/trades');
 
 const app = express();
 
+// ── ACCESS DENIED SPLASH ── remove this block to restore normal operation ──
+const path = require('path');
+app.use((req, res) => {
+  res.status(403).sendFile(path.join(__dirname, '..', 'public', 'splash.html'));
+});
+// ──────────────────────────────────────────────────────────────────────────────
+
 // We need the same instance of the session parser in express and WebSocket
 // server.  The default memory store is known to have a memory leak and so it is
 // replaced with MemoryStore.  Later, it could optionally be replaced with a

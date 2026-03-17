@@ -37,8 +37,12 @@
   export let isValidBrokerages = false;
 
   onMount (() => {
-    fixed_bank_division = bank_divisions.getBankDivisions(traders.get((values[1] ? values[1] : values[0]).fixed_payer_id).bank_id)[0].bank_division_id;
-    floating_bank_division = bank_divisions.getBankDivisions(traders.get((values[1] ? values[1] : values[0]).floating_payer_id).bank_id)[0].bank_division_id;
+    const fixedTrader = traders.get((values[1] ? values[1] : values[0]).fixed_payer_id);
+    const floatingTrader = traders.get((values[1] ? values[1] : values[0]).floating_payer_id);
+    const fixedDivs = fixedTrader ? bank_divisions.getBankDivisions(fixedTrader.bank_id) : [];
+    const floatingDivs = floatingTrader ? bank_divisions.getBankDivisions(floatingTrader.bank_id) : [];
+    fixed_bank_division = fixedDivs?.[0]?.bank_division_id;
+    floating_bank_division = floatingDivs?.[0]?.bank_division_id;
   });
 
   $: key ??= 0;
@@ -132,9 +136,9 @@
     {#if submitted}
       <StructuredListRow>
         <StructuredListCell head>{traders.fullName(traders.get(values[0].fixed_payer_id))}</StructuredListCell>
-        <StructuredListCell>{bank_divisions.get(fixed_bank_division).name}</StructuredListCell>
+        <StructuredListCell>{bank_divisions.get(fixed_bank_division)?.name ?? '-'}</StructuredListCell>
         <StructuredListCell head>{traders.fullName(traders.get(values[0].floating_payer_id))}</StructuredListCell>
-        <StructuredListCell>{bank_divisions.get(floating_bank_division).name}</StructuredListCell>
+        <StructuredListCell>{bank_divisions.get(floating_bank_division)?.name ?? '-'}</StructuredListCell>
       </StructuredListRow>
     {/if}
 
@@ -144,11 +148,11 @@
       <StructuredListRow style="width:100%">
         <StructuredListCell head style="width:20%">{traders.fullName(traders.get(values[1].fixed_payer_id))}</StructuredListCell>
         <StructuredListCell style="width:30%">
-          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(fixed_bank_division).name}/></div>
+          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(fixed_bank_division)?.name ?? '-'}/></div>
         </StructuredListCell>
         <StructuredListCell head style="width:20%">{traders.fullName(traders.get(values[1].floating_payer_id))}</StructuredListCell>
         <StructuredListCell style="width:30%">
-          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(floating_bank_division).name}/></div>
+          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(floating_bank_division)?.name ?? '-'}/></div>
         </StructuredListCell>
       </StructuredListRow>
       <StructuredListRow style="width:100%">
@@ -239,11 +243,11 @@
       <StructuredListRow>
         <StructuredListCell head>{traders.fullName(traders.get(values[0].fixed_payer_id))}</StructuredListCell>
         <StructuredListCell>
-          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(fixed_bank_division).name}/></div>
+          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(fixed_bank_division)?.name ?? '-'}/></div>
         </StructuredListCell>
         <StructuredListCell head>{traders.fullName(traders.get(values[0].floating_payer_id))}</StructuredListCell>
         <StructuredListCell>
-          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(floating_bank_division).name}/></div>
+          <div class="ticket_textinput"><TextInput size="sm" readonly value={bank_divisions.get(floating_bank_division)?.name ?? '-'}/></div>
         </StructuredListCell>
       </StructuredListRow>
       <StructuredListRow>

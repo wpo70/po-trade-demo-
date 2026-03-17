@@ -19,26 +19,28 @@ import currency_state from '../stores/currency_state';
 const dispatch = createEventDispatcher();
 
 $: {
-  if ($active_product===1) {
+  if (!$tradess) {
+    tradss = [];
+  } else if ($active_product===1) {
     // TAB EFP | IRS: combine subproduct 1, 2, 19
-    tradss = $tradess[1].concat($tradess[2]).concat($tradess[19]);
+    tradss = ($tradess[1] || []).concat($tradess[2] || []).concat($tradess[19] || []);
   } else if ($active_product===18) {
     // TAB STIR: combine subproduct 17,18 and 27
-    tradss = $tradess[18].concat($tradess[17]).concat($tradess[27]);
+    tradss = ($tradess[18] || []).concat($tradess[17] || []).concat($tradess[27] || []);
   } else if ($active_product=== 29) {
     // TAB SOFR SPREAD | IRS SWAP: combine subproduct 28, 29
-    tradss = $tradess[29].concat($tradess[28]);
+    tradss = ($tradess[29] || []).concat($tradess[28] || []);
   } else {
-    tradss = $tradess[$active_product];
+    tradss = $tradess[$active_product] || [];
     const fwd = products.fwdOf($active_product);
-    if (fwd) { tradss = tradss.concat($tradess[fwd]) }
+    if (fwd && $tradess[fwd]) { tradss = tradss.concat($tradess[fwd]) }
   }
 }
 </script>
 <div class="trades_wrapper">
 {#key $active_product}
   {#if tradss && tradss.length > 0}
-    {#each tradss as trades (trades.timestamp)}
+    {#each (tradss || []).filter(t => t && t.timestamp) as trades (trades.timestamp)}
       <Trades {trades} bind:leftover_bool={leftover_bool} bind:leftover_err_message={leftover_err_message}/>
     {/each}
   {:else}

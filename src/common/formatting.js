@@ -794,8 +794,12 @@ function getRelativeTrades (tickets, mapped) {
   let relativeTrades = {};
 
   for (let ticket of tickets) {
-    let bid = bank_divisions.get(ticket.bid_bank_division_id).bank_id;
-    let offer = bank_divisions.get(ticket.offer_bank_division_id).bank_id;
+    let bidDiv = bank_divisions.get(ticket.bid_bank_division_id);
+    let offerDiv = bank_divisions.get(ticket.offer_bank_division_id);
+    let bid = bidDiv?.bank_id;
+    let offer = offerDiv?.bank_id;
+
+    if (!bid || !offer) continue; // Skip if bank_id not found
 
     if (!relativeTrades[bid]) {
       relativeTrades[bid] = {
@@ -872,7 +876,9 @@ function getTicketBreakdown (tick, subject, bid, onlyTicket = false, mapped) {
       str += `Rate: ${tick.price}\n`;
       str += `Start Date: ${new Date(tick.start_date).toLocaleDateString()}`;
     } else {
-      let opposing = banks.get(bank_divisions.get(bid ? tick.offer_bank_division_id : tick.bid_bank_division_id).bank_id).bank
+      let opposingDiv = bank_divisions.get(bid ? tick.offer_bank_division_id : tick.bid_bank_division_id);
+      let opposingBank = opposingDiv ? banks.get(opposingDiv.bank_id) : null;
+      let opposing = opposingBank?.bank ?? 'Unknown';
       str += `${tenor} ${bank} ${bid ? "PAY" : "REC"} ${opposing} ${!bid ? "PAY" : "REC"} ${tick.volume}m @ ${tick.price}\n`;
     }
   }
@@ -896,9 +902,11 @@ export async function generateConfo (tickets, mapped) {
     let opposingBanks = [];
 
     for (let ticket of bankTrade.tickets) {
-      let bid = (id == bank_divisions.get(ticket.bid_bank_division_id).bank_id);
-      let opposing = bid ? bank_divisions.get(ticket.offer_bank_division_id).bank_id : bank_divisions.get(ticket.bid_bank_division_id).bank_id
-      if (!opposingBanks.includes(opposing)) opposingBanks.push(opposing);
+      let bidDiv = bank_divisions.get(ticket.bid_bank_division_id);
+      let offerDiv = bank_divisions.get(ticket.offer_bank_division_id);
+      let bid = (id == bidDiv?.bank_id);
+      let opposing = bid ? offerDiv?.bank_id : bidDiv?.bank_id;
+      if (opposing && !opposingBanks.includes(opposing)) opposingBanks.push(opposing);
       if (!trade_ov_ids.includes(ticket.trade_id_ov)) trade_ov_ids.push(ticket.trade_id_ov);
 
       if (pid == 1) {
